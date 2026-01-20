@@ -67,13 +67,23 @@ float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y, float J, 
     return d_energy;
 }
 
+float energy_density_2D(float energy, int size_x, int size_y){
+
+    int N = size_x*size_y;
+
+    float e_density = energy / N;
+
+    return e_density;
+}
+
 void MH_step(int **lattice, int size_x, int size_y, float J, float h, float kB, float T){
     
     // flip site
     int i_s = rand() % size_x;
     int j_s = rand() % size_y;
-
-    printf("i: %i, j: %i\n", i_s, j_s);
+    if (DEBUG){
+        printf("i: %i, j: %i\n", i_s, j_s);
+    }
 
     lattice[i_s][j_s] *= -1;
 
@@ -127,7 +137,7 @@ int main(int argc, char *argv[]) {
         lattice[i] = (int *)malloc(lattice_size_y * sizeof(int));
     }
 
-    int c = 1;
+    int c = 3;
 
     switch(c){
         // Switch for different initializations cases
@@ -174,12 +184,17 @@ int main(int argc, char *argv[]) {
     float total_energy = energy_2D(lattice, lattice_size_x, lattice_size_y, J, h);
     printf("Total Energy of the 2D Ising Lattice: %f\n", total_energy);
 
+    float e_density = energy_density_2D(total_energy, lattice_size_x, lattice_size_y);
+    printf("Energy density of the 2D Ising Lattice: %f\n", e_density);
+
     float magnetisation = magnetisation_2D(lattice, lattice_size_x, lattice_size_y);
     printf("Total Magnetisation of the 2D Ising Lattice: %f\n", magnetisation);
 
-    for (int i = 0; i < 400; i++){
+    for (int i = 0; i < 4000; i++){
         MH_step(lattice, lattice_size_x, lattice_size_y, J ,h, kB, T);
-        printf("MH step %i executed.\n",i);
+        if (DEBUG){
+            printf("MH step %i executed.\n",i);
+        }
     }
 
     if (lattice_size_x <=4 && lattice_size_y <=4){

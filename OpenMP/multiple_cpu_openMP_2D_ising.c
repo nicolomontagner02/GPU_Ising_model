@@ -3,22 +3,23 @@
 #include <time.h>
 #include <math.h>
 #include <omp.h>
+#include "../functions.h"
 
 #define DEBUG 0
 
-void print_lattice(int **lattice, int size_x, int size_y){
+// void print_lattice(int **lattice, int size_x, int size_y){
 
-    printf("2D Ising Lattice:\n");
-        for (int i = 0; i < size_x; i++) {
-            for (int j = 0; j < size_y; j++) {
-                printf("%d ", lattice[i][j]);
-            }
-            printf("\n");
-        }
+//     printf("2D Ising Lattice:\n");
+//         for (int i = 0; i < size_x; i++) {
+//             for (int j = 0; j < size_y; j++) {
+//                 printf("%d ", lattice[i][j]);
+//             }
+//             printf("\n");
+//         }
 
-}
+// }
 
-int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type)
+int **initialize_lattice_openmp(int lattice_size_x, int lattice_size_y, int type)
 {
     int **lattice = (int **)malloc(lattice_size_x * sizeof(int *));
     for (int i = 0; i < lattice_size_x; i++) {
@@ -49,7 +50,7 @@ int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type)
     return lattice;
 }
 
-float energy_2D(int **lattice, int size_x, int size_y, float J, float h) {
+float energy_2D_openmp(int **lattice, int size_x, int size_y, float J, float h) {
     float energy = 0.0;
 
     #pragma omp parallel for reduction(+:energy) collapse(2)
@@ -74,7 +75,7 @@ float energy_2D(int **lattice, int size_x, int size_y, float J, float h) {
     return energy;
 }
 
-int magnetisation_2D(int **lattice, int size_x, int size_y){
+int magnetisation_2D_openmp(int **lattice, int size_x, int size_y){
 
     int magnetisation = 0;
 
@@ -89,28 +90,28 @@ int magnetisation_2D(int **lattice, int size_x, int size_y){
     return magnetisation ;
 }
 
-float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y,float J, float h){
-    int spin = lattice[i][j];
-    float sum_nn = 0.0f;
+// float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y,float J, float h){
+//     int spin = lattice[i][j];
+//     float sum_nn = 0.0f;
 
-    if (i > 0)           sum_nn += lattice[i-1][j];
-    if (i < size_x - 1)  sum_nn += lattice[i+1][j];
-    if (j > 0)           sum_nn += lattice[i][j-1];
-    if (j < size_y - 1)  sum_nn += lattice[i][j+1];
+//     if (i > 0)           sum_nn += lattice[i-1][j];
+//     if (i < size_x - 1)  sum_nn += lattice[i+1][j];
+//     if (j > 0)           sum_nn += lattice[i][j-1];
+//     if (j < size_y - 1)  sum_nn += lattice[i][j+1];
 
-    return 2.0f * spin * (J * sum_nn + h);
-}
+//     return 2.0f * spin * (J * sum_nn + h);
+// }
 
-float energy_density_2D(float energy, int size_x, int size_y){
+// float energy_density_2D(float energy, int size_x, int size_y){
 
-    int N = size_x*size_y;
+//     int N = size_x*size_y;
 
-    float e_density = energy / N;
+//     float e_density = energy / N;
 
-    return e_density;
-}
+//     return e_density;
+// }
 
-void MH_sweep_checkerboard(int **lattice,
+void MH_sweep_checkerboard_openmp(int **lattice,
                            int size_x, int size_y,
                            float J, float h,
                            float kB, float T)
@@ -149,118 +150,116 @@ void MH_sweep_checkerboard(int **lattice,
     }
 }
 
-
-void report_state(const char *label, int **lattice, int size_x, int size_y, float J, float h){
-
-    float E = energy_2D(lattice, size_x, size_y, J, h);
-    float e_density = energy_density_2D(E, size_x, size_y);
-    int m = magnetisation_2D(lattice, size_x, size_y);
-
-    int N = size_x * size_y;
-
-    printf("----------------------------------------\n");
-    printf("%s\n", label);
-    printf("----------------------------------------\n");
-    printf("Total energy        : %f\n", E);
-    printf("Energy density      : %f\n", e_density);
-    printf("Magnetisation       : %f\n", m);
-    printf("Magnetisation/spin  : %f\n",(float) m /(float) N);
+// void save_lattice(const char *folder, int **lattice, int size_x, int size_y, float J, float h, float T, int mc_steps){
     
-    if (size_x <= 4 && size_y <= 4) {
-        print_lattice(lattice, size_x, size_y);
-    }
-}
+//     char filename[512];
 
-void save_lattice(const char *folder, int **lattice, int size_x, int size_y, float J, float h, float T, int mc_steps){
+//     snprintf(filename, sizeof(filename),
+//              "%s/ising_J%.3f_h%.3f_T%.3f_Lx%d_Ly%d_MC%d.dat",
+//              folder, J, h, T, size_x, size_y, mc_steps);
+
+//     FILE *fp = fopen(filename, "w");
+//     if (fp == NULL) {
+//         perror("Error opening file for lattice save");
+//         return;
+//     }
+
+//     for (int i = 0; i < size_x; i++) {
+//         for (int j = 0; j < size_y; j++) {
+//             fprintf(fp, "%d ", lattice[i][j]);
+//         }
+//         fprintf(fp, "\n");
+//     }
+
+//     fclose(fp);
+
+//     printf("Lattice saved to %s\n", filename);
+// }
+
+// void report_state(const char *label, int **lattice, int size_x, int size_y, float J, float h){
+
+//     float E = energy_2D(lattice, size_x, size_y, J, h);
+//     float e_density = energy_density_2D(E, size_x, size_y);
+//     int m = magnetisation_2D(lattice, size_x, size_y);
+
+//     int N = size_x * size_y;
+
+//     printf("----------------------------------------\n");
+//     printf("%s\n", label);
+//     printf("----------------------------------------\n");
+//     printf("Total energy        : %f\n", E);
+//     printf("Energy density      : %f\n", e_density);
+//     printf("Magnetisation       : %f\n", m);
+//     printf("Magnetisation/spin  : %f\n",(float) m /(float) N);
     
-    char filename[512];
+//     if (size_x <= 4 && size_y <= 4) {
+//         print_lattice(lattice, size_x, size_y);
+//     }
+// }
 
-    snprintf(filename, sizeof(filename),
-             "%s/ising_J%.3f_h%.3f_T%.3f_Lx%d_Ly%d_MC%d.dat",
-             folder, J, h, T, size_x, size_y, mc_steps);
+// int test(){
 
-    FILE *fp = fopen(filename, "w");
-    if (fp == NULL) {
-        perror("Error opening file for lattice save");
-        return;
-    }
+//     // Parse command line arguments
+//     int lattice_size_x = 10;
+//     int lattice_size_y = 10;
 
-    for (int i = 0; i < size_x; i++) {
-        for (int j = 0; j < size_y; j++) {
-            fprintf(fp, "%d ", lattice[i][j]);
-        }
-        fprintf(fp, "\n");
-    }
+//     int type = 3; // 1 for all spin up, 2 for all spin down, 3 for random initialization of the lattice
 
-    fclose(fp);
+//     float J = 1.0; // Interaction strength
+//     float h = 1.0 ; // External magnetic field
+//     float kB = 1.0*exp(-23);
+//     float T = 100.0;
+//     int n_steps = 1000000;
 
-    printf("Lattice saved to %s\n", filename);
-}
+//     // simulation header
+//     printf("========================================\n");
+//     printf("2D Ising Model — Metropolis Simulation\n");
+//     printf("========================================\n");
+//     printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
+//     printf("Interaction J       : %.3f\n", J);
+//     printf("External field h    : %.3f\n", h);
+//     printf("Temperature T       : %.3f\n", T);
+//     printf("MC steps            : %d\n", n_steps);
+//     printf("Initialization type : %s\n",
+//         type == 1 ? "All up" :
+//         type == 2 ? "All down" : "Random");
+//     printf("\n");
 
+//     int **lattice = initialize_lattice_openmp(lattice_size_x, lattice_size_y, type);
 
-int test(){
+//     report_state("Initial state",lattice, lattice_size_x, lattice_size_y,J, h);
+//     save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, 0);
 
-    // Parse command line arguments
-    int lattice_size_x = 10;
-    int lattice_size_y = 10;
+//     for (int step = 0; step < n_steps; step++) {
+//     MH_sweep_checkerboard_openmp(lattice,
+//                           lattice_size_x, lattice_size_y,
+//                           J, h, kB, T);
+//     }
 
-    int type = 3; // 1 for all spin up, 2 for all spin down, 3 for random initialization of the lattice
+//     report_state("Final state", lattice, lattice_size_x, lattice_size_y, J, h);
+//     save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, n_steps);
 
-    float J = 1.0; // Interaction strength
-    float h = 1.0 ; // External magnetic field
-    float kB = 1.0*exp(-23);
-    float T = 100.0;
-    int n_steps = 1000000;
+//     // free the memory
+//     for (int i = 0; i < lattice_size_x; i++) {
+//         free(lattice[i]);
+//     }
+//     free(lattice);
 
-    // simulation header
-    printf("========================================\n");
-    printf("2D Ising Model — Metropolis Simulation\n");
-    printf("========================================\n");
-    printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
-    printf("Interaction J       : %.3f\n", J);
-    printf("External field h    : %.3f\n", h);
-    printf("Temperature T       : %.3f\n", T);
-    printf("MC steps            : %d\n", n_steps);
-    printf("Initialization type : %s\n",
-        type == 1 ? "All up" :
-        type == 2 ? "All down" : "Random");
-    printf("\n");
+//     return 0;
 
-    int **lattice = initialize_lattice(lattice_size_x, lattice_size_y, type);
+// }
 
-    report_state("Initial state",lattice, lattice_size_x, lattice_size_y,J, h);
-    save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, 0);
+// typedef struct {
+//     float E;
+//     float e_density;
+//     float m;
+//     float m_density;
+//     float initialization_time;
+//     float MH_evolution_time;
+//     float MH_evolution_time_over_steps;
+// } Observables;
 
-    for (int step = 0; step < n_steps; step++) {
-    MH_sweep_checkerboard(lattice,
-                          lattice_size_x, lattice_size_y,
-                          J, h, kB, T);
-    }
-
-    report_state("Final state", lattice, lattice_size_x, lattice_size_y, J, h);
-    save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, n_steps);
-
-    // free the memory
-    for (int i = 0; i < lattice_size_x; i++) {
-        free(lattice[i]);
-    }
-    free(lattice);
-
-    return 0;
-
-}
-
-typedef struct {
-    float E;
-    float e_density;
-    float m;
-    float m_density;
-    float initialization_time;
-    float MH_evolution_time;
-    float MH_evolution_time_over_steps;
-} Observables;
-
-Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
+Observables run_ising_simulation_openmp(int lattice_size_x, int lattice_size_y,
                                  int type,
                                  float J, float h, float kB, float T,
                                  int n_steps)
@@ -269,7 +268,7 @@ Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
 
     /* --- Initialization timing --- */
     t0 = clock();
-    int **lattice = initialize_lattice(lattice_size_x, lattice_size_y, type);
+    int **lattice = initialize_lattice_openmp(lattice_size_x, lattice_size_y, type);
     t1 = clock();
 
     float initialization_time =
@@ -278,7 +277,7 @@ Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
     /* --- Metropolis evolution timing --- */
     t0 = clock();
     for (int step = 0; step < n_steps; step++) {
-    MH_sweep_checkerboard(lattice,
+    MH_sweep_checkerboard_openmp(lattice,
                           lattice_size_x, lattice_size_y,
                           J, h, kB, T);
     }
@@ -289,10 +288,10 @@ Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
         (float)(t1 - t0) / CLOCKS_PER_SEC;
 
     /* --- Measurements --- */
-    float E = energy_2D(lattice, lattice_size_x, lattice_size_y, J, h);
+    float E = energy_2D_openmp(lattice, lattice_size_x, lattice_size_y, J, h);
     float e_density = energy_density_2D(E, lattice_size_x, lattice_size_y);
-    float m = magnetisation_2D(lattice, lattice_size_x, lattice_size_y);
-    float m_density = m;
+    float m = magnetisation_2D_openmp(lattice, lattice_size_x, lattice_size_y);
+    float m_density = m / lattice_size_x / lattice_size_y;
 
     /* --- Cleanup --- */
     for (int i = 0; i < lattice_size_x; i++) {
@@ -314,50 +313,50 @@ Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
     return out;
 }
 
-int main(int argc, char *argv[]) {
+// int main(int argc, char *argv[]) {
 
-    // Check command line arguments
-    if (argc != 3) {
-        printf("Usage: %s <lattice_size_x> <lattice_size_y>\n", argv[0]);
-        printf("Example: %s 10 10\n", argv[0]);
-        return 1;
-    }
+//     // Check command line arguments
+//     if (argc != 3) {
+//         printf("Usage: %s <lattice_size_x> <lattice_size_y>\n", argv[0]);
+//         printf("Example: %s 10 10\n", argv[0]);
+//         return 1;
+//     }
 
-    // Parse command line arguments
-    int lattice_size_x = atoi(argv[1]);
-    int lattice_size_y = atoi(argv[2]);
+//     // Parse command line arguments
+//     int lattice_size_x = atoi(argv[1]);
+//     int lattice_size_y = atoi(argv[2]);
 
-    int type = 3;
-    float J = 1;
-    float h = 1;
-    float kB = 1.0*exp(-23);
-    float T = 100;
-    int n_steps = 1000000;
-    int n_sweeps = (int) (n_steps / lattice_size_x / lattice_size_y);
+//     int type = 3;
+//     float J = 1;
+//     float h = 1;
+//     float kB = 1.0*exp(-23);
+//     float T = 100;
+//     int n_steps = 1000000;
+//     int n_sweeps = (int) (n_steps / lattice_size_x / lattice_size_y);
 
-    printf("========================================\n");
-    printf("2D Ising Model — Metropolis Simulation\n");
-    printf("========================================\n");
-    printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
-    printf("Interaction J       : %.3f\n", J);
-    printf("External field h    : %.3f\n", h);
-    printf("Temperature T       : %.3f\n", T);
-    printf("MC steps            : %d\n", n_sweeps);
-    printf("Initialization type : %s\n",
-        type == 1 ? "All up" :
-        type == 2 ? "All down" : "Random");
-    printf("\n");
-    printf("========================================\n");
+//     printf("========================================\n");
+//     printf("2D Ising Model — Metropolis Simulation\n");
+//     printf("========================================\n");
+//     printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
+//     printf("Interaction J       : %.3f\n", J);
+//     printf("External field h    : %.3f\n", h);
+//     printf("Temperature T       : %.3f\n", T);
+//     printf("MC steps            : %d\n", n_sweeps);
+//     printf("Initialization type : %s\n",
+//         type == 1 ? "All up" :
+//         type == 2 ? "All down" : "Random");
+//     printf("\n");
+//     printf("========================================\n");
 
-    Observables out = run_ising_simulation(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
+//     Observables out = run_ising_simulation(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
 
-    printf("Energy                : %f\n", out.E);
-    printf("Energy density        : %f\n", out.e_density);
-    printf("Magnetization         : %f\n", out.m);
-    printf("Magnetization density : %f\n", out.m_density);
-    printf("Initialization time (s)        : %f\n", out.initialization_time);
-    printf("MH evolution time (s)          : %f\n", out.MH_evolution_time);
-    printf("MH time per step (s)           : %e\n", out.MH_evolution_time_over_steps);
+//     printf("Energy                : %f\n", out.E);
+//     printf("Energy density        : %f\n", out.e_density);
+//     printf("Magnetization         : %f\n", out.m);
+//     printf("Magnetization density : %f\n", out.m_density);
+//     printf("Initialization time (s)        : %f\n", out.initialization_time);
+//     printf("MH evolution time (s)          : %f\n", out.MH_evolution_time);
+//     printf("MH time per step (s)           : %e\n", out.MH_evolution_time_over_steps);
 
-    return 0;
-}
+//     return 0;
+// }

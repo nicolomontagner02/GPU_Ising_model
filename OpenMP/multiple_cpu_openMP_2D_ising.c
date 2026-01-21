@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
 
 #define DEBUG 0
 
@@ -17,61 +18,42 @@ void print_lattice(int **lattice, int size_x, int size_y){
 
 }
 
-int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type){
-    
-    // Allocate memory for the lattice
+int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type)
+{
     int **lattice = (int **)malloc(lattice_size_x * sizeof(int *));
     for (int i = 0; i < lattice_size_x; i++) {
         lattice[i] = (int *)malloc(lattice_size_y * sizeof(int));
     }
 
-    switch(type){
-        // Switch for different initializations cases
-        case 1:
-            // Initialize to all spins up (+1)
-            for (int i = 0; i < lattice_size_x; i++) {
-                for (int j = 0; j < lattice_size_y; j++) {
+    #pragma omp parallel
+    {
+        unsigned int seed = 1234 + omp_get_thread_num();
+
+        #pragma omp for collapse(2)
+        for (int i = 0; i < lattice_size_x; i++) {
+            for (int j = 0; j < lattice_size_y; j++) {
+
+                if (type == 1) {
                     lattice[i][j] = 1;
                 }
-            }
-            break;
-
-        case 2:
-            // Initialize to all spins down (-1)
-            for (int i = 0; i < lattice_size_x; i++) {
-                for (int j = 0; j < lattice_size_y; j++) {
+                else if (type == 2) {
                     lattice[i][j] = -1;
                 }
-            }
-            break;
-
-        case 3:
-            // Initialize to random spins (+1 or -1)
-            srand(2); // Seed for reproducibility
-            for (int i = 0; i < lattice_size_x; i++) {
-                for (int j = 0; j < lattice_size_y; j++) {
-                    lattice[i][j] = (rand() % 2) * 2 - 1; // Randomly assign +1 or -1
+                else if (type == 3) {
+                    lattice[i][j] = (rand_r(&seed) & 1) ? 1 : -1;
                 }
-
             }
-            break;
-
-        default:
-            printf("Wrong initialization case submitted!\n");
-            break;
-
+        }
     }
-        
-    //print the lattice (only small size)
-    if (lattice_size_x <=4 && lattice_size_y <=4){
-        print_lattice(lattice, lattice_size_x, lattice_size_y);
-    }  
 
     return lattice;
 }
 
 float energy_2D(int **lattice, int size_x, int size_y, float J, float h) {
     float energy = 0.0;
+
+    #pragma omp parallel for reduction(+:energy) collapse(2)
+
     for (int i = 0; i < size_x; i++) {
         for (int j = 0; j < size_y; j++) {
             
@@ -95,6 +77,8 @@ float energy_2D(int **lattice, int size_x, int size_y, float J, float h) {
 int magnetisation_2D(int **lattice, int size_x, int size_y){
 
     int magnetisation = 0;
+
+    #pragma omp parallel for reduction(+:magnetisation) collapse(2)
 
     for (int i = 0; i < size_x; i++){
         for (int j = 0; j < size_y; j++){
@@ -126,38 +110,45 @@ float energy_density_2D(float energy, int size_x, int size_y){
     return e_density;
 }
 
-void MH_step(int **lattice, int size_x, int size_y,float J, float h, float kB, float T){
-    int i_s = rand() % size_x;
-    int j_s = rand() % size_y;
+void MH_sweep_checkerboard(int **lattice,
+                           int size_x, int size_y,
+                           float J, float h,
+                           float kB, float T)
+{
+    for (int color = 0; color < 2; color++) {
 
-    if (DEBUG) {
-        printf("Proposed flip at (%d, %d)\n", i_s, j_s);
-    }
+        #pragma omp parallel
+        {
+            unsigned int seed = 5678 + omp_get_thread_num();
 
-    float d_energy = d_energy_2D(lattice, i_s, j_s,
-                                 size_x, size_y, J, h);
+            #pragma omp for collapse(2)
+            for (int i = 0; i < size_x; i++) {
+                for (int j = 0; j < size_y; j++) {
 
-    int accept = 0;
+                    if ((i + j) % 2 != color) continue;
 
-    if (d_energy <= 0.0f) {
-        accept = 1;
-    } else {
-        float p = exp(-d_energy / (kB * T));
-        float u = (float) rand() / (float) RAND_MAX;
-        if (u < p) {
-            accept = 1;
-        }
-    }
+                    float dE = d_energy_2D(lattice, i, j,
+                                           size_x, size_y, J, h);
 
-    if (accept) {
-        lattice[i_s][j_s] *= -1;
-        if (DEBUG) {
-            printf("Move accepted (ΔE = %.4f)\n", d_energy);
-        }
-    } else if (DEBUG) {
-        printf("Move rejected (ΔE = %.4f)\n", d_energy);
+                    int accept = 0;
+
+                    if (dE <= 0.0f) {
+                        accept = 1;
+                    } else {
+                        float u = (float)rand_r(&seed) / (float)RAND_MAX;
+                        if (u < expf(-dE / (kB * T)))
+                            accept = 1;
+                    }
+
+                    if (accept) {
+                        lattice[i][j] *= -1;
+                    }
+                }
+            }
+        } /* implicit barrier between colors */
     }
 }
+
 
 void report_state(const char *label, int **lattice, int size_x, int size_y, float J, float h){
 
@@ -240,11 +231,10 @@ int test(){
     report_state("Initial state",lattice, lattice_size_x, lattice_size_y,J, h);
     save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, 0);
 
-    for (int i = 0; i < n_steps; i++){
-        MH_step(lattice, lattice_size_x, lattice_size_y, J ,h, kB, T);
-        if (DEBUG){
-            printf("MH step %i executed.\n",i);
-        }
+    for (int step = 0; step < n_steps; step++) {
+    MH_sweep_checkerboard(lattice,
+                          lattice_size_x, lattice_size_y,
+                          J, h, kB, T);
     }
 
     report_state("Final state", lattice, lattice_size_x, lattice_size_y, J, h);
@@ -287,9 +277,12 @@ Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
 
     /* --- Metropolis evolution timing --- */
     t0 = clock();
-    for (int i = 0; i < n_steps; i++) {
-        MH_step(lattice, lattice_size_x, lattice_size_y, J, h, kB, T);
+    for (int step = 0; step < n_steps; step++) {
+    MH_sweep_checkerboard(lattice,
+                          lattice_size_x, lattice_size_y,
+                          J, h, kB, T);
     }
+
     t1 = clock();
 
     float MH_evolution_time =
@@ -316,7 +309,7 @@ Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
     out.initialization_time = initialization_time;
     out.MH_evolution_time = MH_evolution_time;
     out.MH_evolution_time_over_steps =
-        MH_evolution_time / (float)n_steps;
+        MH_evolution_time / (float)n_steps / lattice_size_x / lattice_size_y;
 
     return out;
 }
@@ -340,6 +333,7 @@ int main(int argc, char *argv[]) {
     float kB = 1.0*exp(-23);
     float T = 100;
     int n_steps = 1000000;
+    int n_sweeps = (int) (n_steps / lattice_size_x / lattice_size_y);
 
     printf("========================================\n");
     printf("2D Ising Model — Metropolis Simulation\n");
@@ -348,14 +342,14 @@ int main(int argc, char *argv[]) {
     printf("Interaction J       : %.3f\n", J);
     printf("External field h    : %.3f\n", h);
     printf("Temperature T       : %.3f\n", T);
-    printf("MC steps            : %d\n", n_steps);
+    printf("MC steps            : %d\n", n_sweeps);
     printf("Initialization type : %s\n",
         type == 1 ? "All up" :
         type == 2 ? "All down" : "Random");
     printf("\n");
     printf("========================================\n");
 
-    Observables out = run_ising_simulation(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
+    Observables out = run_ising_simulation(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
 
     printf("Energy                : %f\n", out.E);
     printf("Energy density        : %f\n", out.e_density);

@@ -4,20 +4,37 @@
 #include <vector>
 #include <algorithm>
 #include <cuda_runtime.h>
+#include <curand_kernel.h>
 
 #define THREADS_PER_BLOCK_X 32  
 #define THREADS_PER_BLOCK_Y 32 
+#define PRINT_UP_TO 10
 
 #define DEBUG 0
 
 // GPU kernel to initialize lattice (cold start: all spins +1)
-__global__ void initialize_lattice_gpu_cold(int *lattice, int size_x, int size_y)
+__global__ void initialize_lattice_gpu_cold(int *lattice, int size_x, int size_y, int sign)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (row < size_y && col < size_x) {
-        lattice[row * size_x + col] = 1;
+        lattice[row * size_x + col] = sign;
+    }
+}
+
+// GPU kernel to initialize lattice (cold start: all spins +1)
+__global__ void initialize_lattice_gpu_hot(int *lattice, int size_x, int size_y, unsigned seed)
+{
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < size_y && col < size_x) {
+
+        // random in (0,1]
+        float r = curand_uniform(seed); //TOFIX
+
+        lattice[row * size_x + col] = (r < 0.5f) ? -1 : 1;
     }
 }
 
@@ -26,7 +43,7 @@ void print_lattice(const int *lattice, int size_x, int size_y)
 {
     for (int i = 0; i < size_y; i++) {
         for (int j = 0; j < size_x; j++) {
-            printf("%2d ", lattice[i * size_x + j]);
+            printf("%2d ", lattice[i*size_x + j]);
         }
         printf("\n");
     }
@@ -42,15 +59,13 @@ int main(int argc, char *argv[])
     int lattice_size_x = atoi(argv[1]);
     int lattice_size_y = atoi(argv[2]);
 
+    int sign = -1;
+
     size_t N = lattice_size_x * lattice_size_y;
     size_t lattice_bytes = N * sizeof(int);
 
-    std::vector<int> lattice(N, 0);
-
     int *d_lattice = nullptr;
     cudaMalloc(&d_lattice, lattice_bytes);
-
-    cudaMemcpy(d_lattice, lattice.data(), lattice_bytes, cudaMemcpyHostToDevice);
 
     dim3 block(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
     dim3 grid(
@@ -58,12 +73,7 @@ int main(int argc, char *argv[])
         (lattice_size_y + block.y - 1) / block.y
     );
 
-    printf("Initial lattice (host):\n");
-    print_lattice(lattice.data(), lattice_size_x, lattice_size_y);
-
-    initialize_lattice_gpu_cold<<<grid, block>>>(
-        d_lattice, lattice_size_x, lattice_size_y
-    );
+    initialize_lattice_gpu_hot<<<grid, block>>>(d_lattice, lattice_size_x, lattice_size_y, sign);
 
     cudaDeviceSynchronize();
 
@@ -73,10 +83,12 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    std::vector <int> lattice(N,0);
+
     cudaMemcpy(lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
     printf("\nLattice after GPU initialization:\n");
-    print_lattice(lattice.data(), lattice_size_x, lattice_size_y);
+    print_lattice(lattice.data(), PRINT_UP_TO, PRINT_UP_TO);
 
     cudaFree(d_lattice);
     return 0;

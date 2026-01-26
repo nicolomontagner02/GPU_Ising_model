@@ -12,6 +12,10 @@
 
 #define DEBUG 0
 
+// ###############################################################
+// CUDA FUNCTIONS + CALLING
+// ###############################################################
+
 __global__ void init_rng_states(curandState *states, int size_x, int size_y, unsigned long long seed)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -55,13 +59,13 @@ __global__ void energy_2D_kernel(const int *lattice, float *energy_partial, int 
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (row < size_y && col < size_x) {
+    if (row < size_y && col < size_x ) {
 
         int idx = row * size_x + col;
 
         int spin = lattice[idx];
 
-        int right = lattice[(col + 1) +  row * size_x];
+        int right = lattice[(col + 1) % size_x +  row * size_x];
         int down  = lattice[col + (row + 1) % size_y * size_x];
 
         float e = 0.0f;
@@ -86,14 +90,7 @@ float energy_2D_gpu(int *d_lattice, int size_x, int size_y, float J, float h)
         (size_y + block.y - 1) / block.y
     );
 
-    energy_2D_kernel<<<grid, block>>>(
-        d_lattice,
-        d_energy,
-        size_x,
-        size_y,
-        J,
-        h
-    );
+    energy_2D_kernel<<<grid, block>>>(d_lattice, d_energy, size_x, size_y, J, h);
     cudaDeviceSynchronize();
 
     std::vector<float> h_energy(N);
@@ -107,6 +104,29 @@ float energy_2D_gpu(int *d_lattice, int size_x, int size_y, float J, float h)
     return energy;
 }
 
+__global__ void d_energy_2D(int *lattice, int i, int j, int size_x, int size_y, float J, float h, float energy){
+    
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < size_y && col < size_x ) {
+
+        int idx = row * size_x + col;
+
+        int spin = lattice[idx];
+        float sum_nn = 0.0f;
+
+        sum_nn += lattice[(i-1)j];
+        sum_nn += lattice[(i+1)% size_x][j];
+        sum_nn += lattice[i][(j-1) % size_y];
+        sum_nn += lattice[i][(j+1) % size_y];
+        
+}
+
+// ###############################################################
+// HELPER FUNCTIONS
+// ###############################################################
+
 // Print lattice (host)
 void print_lattice(const int *lattice, int size_x, int size_y)
 {
@@ -117,6 +137,10 @@ void print_lattice(const int *lattice, int size_x, int size_y)
         printf("\n");
     }
 }
+
+// ###############################################################
+// MAIN
+// ###############################################################
 
 int main(int argc, char *argv[])
 {
@@ -155,6 +179,7 @@ int main(int argc, char *argv[])
 
     // Hot initialization of the lattice
     initialize_lattice_gpu_hot<<<grid, block>>>(d_lattice, d_rng_states, lattice_size_x, lattice_size_y);
+    // initialize_lattice_gpu_cold<<<grid, block>>>(d_lattice, lattice_size_x, lattice_size_y, -1);
 
     cudaDeviceSynchronize();
 

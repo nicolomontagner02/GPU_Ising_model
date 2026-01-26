@@ -109,12 +109,12 @@ float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y,float J, f
     int spin = lattice[i][j];
     float sum_nn = 0.0f;
 
-    if (i > 0)           sum_nn += lattice[i-1][j];
-    if (i < size_x - 1)  sum_nn += lattice[i+1][j];
-    if (j > 0)           sum_nn += lattice[i][j-1];
-    if (j < size_y - 1)  sum_nn += lattice[i][j+1];
+    sum_nn += lattice[(i-1)% size_x][j];
+    sum_nn += lattice[(i+1)% size_x][j];
+    sum_nn += lattice[i][(j-1) % size_y];
+    sum_nn += lattice[i][(j+1) % size_y];
 
-    return 2.0f * spin * (J * sum_nn + h);
+    return spin * (J * sum_nn + h);
 }
 
 float energy_density_2D(float energy, int size_x, int size_y){

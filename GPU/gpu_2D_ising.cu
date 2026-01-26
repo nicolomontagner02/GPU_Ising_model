@@ -6,13 +6,25 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
-#define THREADS_PER_BLOCK_X 32  
-#define THREADS_PER_BLOCK_Y 32 
+#define THREADS_PER_BLOCK_X 10  
+#define THREADS_PER_BLOCK_Y 10 
 #define PRINT_UP_TO 10
 
 #define DEBUG 0
 
-// GPU kernel to initialize lattice (cold start: all spins +1)
+__global__ void init_rng_states(curandState *states, int size_x, int size_y, unsigned long long seed)
+{
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < size_y && col < size_x) {
+        int idx = row * size_x + col;
+
+        curand_init(seed, idx, 0, &states[idx]);
+    }
+}
+
+// GPU kernel to initialize lattice (cold start: all spins +1 or -1)
 __global__ void initialize_lattice_gpu_cold(int *lattice, int size_x, int size_y, int sign)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -23,19 +35,76 @@ __global__ void initialize_lattice_gpu_cold(int *lattice, int size_x, int size_y
     }
 }
 
-// GPU kernel to initialize lattice (cold start: all spins +1)
-__global__ void initialize_lattice_gpu_hot(int *lattice, int size_x, int size_y, unsigned seed)
+// GPU kernel to initialize lattice (hot case: random spin of each site)
+__global__ void initialize_lattice_gpu_hot(int *lattice, curandState *states, int size_x, int size_y)
+{
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < size_y && col < size_x) {
+        int idx = row * size_x + col;
+
+        float r = curand_uniform(&states[idx]);  // (0,1]
+        lattice[idx] = (r < 0.5f) ? -1 : 1;
+    }
+}
+
+// Evaluate energy
+__global__ void energy_2D_kernel(const int *lattice, float *energy_partial, int size_x, int size_y, float J, float h)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (row < size_y && col < size_x) {
 
-        // random in (0,1]
-        float r = curand_uniform(seed); //TOFIX
+        int idx = row * size_x + col;
 
-        lattice[row * size_x + col] = (r < 0.5f) ? -1 : 1;
+        int spin = lattice[idx];
+
+        int right = lattice[(col + 1) +  row * size_x];
+        int down  = lattice[col + (row + 1) % size_y * size_x];
+
+        float e = 0.0f;
+        e -= J * spin * (right + down);
+        e -= h * spin;
+
+        energy_partial[idx] = e;
     }
+}
+
+float energy_2D_gpu(int *d_lattice, int size_x, int size_y, float J, float h)
+{
+    size_t N = size_x * size_y;
+    size_t bytes = N * sizeof(float);
+
+    float *d_energy = nullptr;
+    cudaMalloc(&d_energy, bytes);
+
+    dim3 block(8, 8);
+    dim3 grid(
+        (size_x + block.x - 1) / block.x,
+        (size_y + block.y - 1) / block.y
+    );
+
+    energy_2D_kernel<<<grid, block>>>(
+        d_lattice,
+        d_energy,
+        size_x,
+        size_y,
+        J,
+        h
+    );
+    cudaDeviceSynchronize();
+
+    std::vector<float> h_energy(N);
+    cudaMemcpy(h_energy.data(), d_energy, bytes, cudaMemcpyDeviceToHost);
+
+    float energy = 0.0f;
+    for (size_t i = 0; i < N; i++)
+        energy += h_energy[i];
+
+    cudaFree(d_energy);
+    return energy;
 }
 
 // Print lattice (host)
@@ -59,7 +128,9 @@ int main(int argc, char *argv[])
     int lattice_size_x = atoi(argv[1]);
     int lattice_size_y = atoi(argv[2]);
 
-    int sign = -1;
+    // int sign = -1;
+    float J = 1;
+    float h = 1;
 
     size_t N = lattice_size_x * lattice_size_y;
     size_t lattice_bytes = N * sizeof(int);
@@ -73,7 +144,17 @@ int main(int argc, char *argv[])
         (lattice_size_y + block.y - 1) / block.y
     );
 
-    initialize_lattice_gpu_hot<<<grid, block>>>(d_lattice, lattice_size_x, lattice_size_y, sign);
+    curandState *d_rng_states = nullptr;
+    cudaMalloc(&d_rng_states, N * sizeof(curandState));
+
+    unsigned long long seed = (unsigned long long)time(NULL);
+
+    // RNG initialization
+    init_rng_states<<<grid, block>>>(d_rng_states, lattice_size_x, lattice_size_y, seed);
+    cudaDeviceSynchronize();
+
+    // Hot initialization of the lattice
+    initialize_lattice_gpu_hot<<<grid, block>>>(d_lattice, d_rng_states, lattice_size_x, lattice_size_y);
 
     cudaDeviceSynchronize();
 
@@ -83,13 +164,20 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    float energy = energy_2D_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h);
+
     std::vector <int> lattice(N,0);
 
     cudaMemcpy(lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
     printf("\nLattice after GPU initialization:\n");
-    print_lattice(lattice.data(), PRINT_UP_TO, PRINT_UP_TO);
+    int print_x = min(PRINT_UP_TO, lattice_size_x);
+    int print_y = min(PRINT_UP_TO, lattice_size_y);
+    print_lattice(lattice.data(), print_x, print_y);
+
+    printf("Energy: %f\n", energy);
 
     cudaFree(d_lattice);
+    cudaFree(d_rng_states);
     return 0;
 }

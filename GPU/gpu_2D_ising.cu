@@ -272,7 +272,7 @@ int main(int argc, char *argv[])
 
     int i = 0;
 
-    while (i < 5)
+    while (i < 10)
     {
         MH_checkboard_sweep_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h, kB, T, grid, block);
         i++;

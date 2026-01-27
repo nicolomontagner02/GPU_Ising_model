@@ -6,8 +6,8 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
-#define THREADS_PER_BLOCK_X 10
-#define THREADS_PER_BLOCK_Y 10
+#define THREADS_PER_BLOCK_X 32
+#define THREADS_PER_BLOCK_Y 32
 #define PRINT_UP_TO 10
 
 #define DEBUG 0
@@ -107,56 +107,83 @@ float energy_2D_gpu(int *d_lattice, int size_x, int size_y, float J, float h)
     return energy;
 }
 
-float d_energy_2D(int *lattice, int i, int j, int size_x, int size_y, float J, float h)
+__device__ float d_energy_2D(
+    const int *lattice,
+    int i, int j,
+    int size_x, int size_y,
+    float J, float h)
 {
-
     int idx = i * size_x + j;
-
     int spin = lattice[idx];
+
     float sum_nn = 0.0f;
 
-    sum_nn += lattice[(idx + 1) % size_x];                 // right
-    sum_nn += lattice[(idx - 1) % size_x];                 // left
-    sum_nn += lattice[(idx + size_x) % (size_y * size_x)]; // bottom
-    sum_nn += lattice[(idx - size_x) % (size_y * size_x)]; // top
+    int right = i * size_x + (j + 1 + size_x) % size_x;
+    int left = i * size_x + (j - 1 + size_x) % size_x;
+    int bottom = ((i + 1 + size_y) % size_y) * size_x + j;
+    int top = ((i - 1 + size_y) % size_y) * size_x + j;
 
-    float d_energy = 2 * spin * (J * sum_nn + h);
+    sum_nn += lattice[right];
+    sum_nn += lattice[left];
+    sum_nn += lattice[bottom];
+    sum_nn += lattice[top];
 
-    return d_energy;
+    return 2.0f * spin * (J * sum_nn + h);
 }
 
-__global__ void MH_1color_checkerboard_openmp(int *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, int color)
+__global__ void MH_1color_checkerboard_gpu(int *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, int color)
 {
 
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (row < size_y && col < size_x)
+    if (row >= size_y || col >= size_x)
+        return;
+
+    if (((row + col) & 1) != color)
+        return;
+
+    int idx = row * size_x + col;
+
+    float dE = d_energy_2D(lattice, row, col, size_x, size_y, J, h);
+
+    if (dE <= 0.0f)
     {
-
-        int idx = row * size_x + col;
-
-        if (idx % 2 == color)
-        { // TO FIX FOR EVEN SIZE MATRICES
-
-            float d_energy = d_energy_2D(lattice, row, col, size_x, size_y, J, h);
-
-            if (d_energy <= 0.0f)
-            {
-
-                lattice[idx] *= -1;
-            }
-            else
-            {
-                float p = exp(-d_energy / (kB * T));
-                float u = curand_uniform(&states[idx]);
-                if (u < p)
-                {
-                    lattice[idx] *= -1;
-                }
-            }
+        lattice[idx] *= -1;
+    }
+    else
+    {
+        float u = curand_uniform(&states[idx]);
+        if (u < expf(-dE / (kB * T)))
+        {
+            lattice[idx] *= -1;
         }
     }
+}
+
+void MH_checkboard_sweep_gpu(int *lattice, int size_x, int size_y, float J, float h, float kB, float T, dim3 grid, dim3 block)
+{
+
+    int N = size_x + size_y;
+
+    curandState *d_rng_states = nullptr;
+    cudaMalloc(&d_rng_states, N * sizeof(curandState));
+
+    unsigned long long seed = (unsigned long long)time(NULL);
+
+    // RNG initialization
+    init_rng_states<<<grid, block>>>(d_rng_states, size_x, size_y, seed);
+    cudaDeviceSynchronize();
+
+    // Update black sites
+    MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, d_rng_states, size_x, size_y, J, h, kB, T, 0);
+    cudaDeviceSynchronize();
+
+    // Update white sites
+    MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, d_rng_states, size_x, size_y, J, h, kB, T, 1);
+    cudaDeviceSynchronize();
+
+    cudaFree(d_rng_states);
 }
 
 // ###############################################################
@@ -194,6 +221,8 @@ int main(int argc, char *argv[])
     // int sign = -1;
     float J = 1;
     float h = 1;
+    float kB = 1e-23;
+    float T = 100.0;
 
     size_t N = lattice_size_x * lattice_size_y;
     size_t lattice_bytes = N * sizeof(int);
@@ -238,6 +267,23 @@ int main(int argc, char *argv[])
     int print_x = min(PRINT_UP_TO, lattice_size_x);
     int print_y = min(PRINT_UP_TO, lattice_size_y);
     print_lattice(lattice.data(), print_x, print_y);
+
+    printf("Energy: %f\n", energy);
+
+    int i = 0;
+
+    while (i < 5)
+    {
+        MH_checkboard_sweep_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h, kB, T, grid, block);
+        i++;
+    }
+
+    cudaMemcpy(lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
+
+    printf("\nLattice after GPU initialization:\n");
+    print_lattice(lattice.data(), print_x, print_y);
+
+    energy = energy_2D_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h);
 
     printf("Energy: %f\n", energy);
 

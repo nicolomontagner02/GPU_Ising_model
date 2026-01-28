@@ -30,7 +30,7 @@ __global__ void init_rng_states(curandState *states, int size_x, int size_y, uns
 }
 
 // GPU kernel to initialize lattice (cold start: all spins +1 or -1)
-__global__ void initialize_lattice_gpu_cold(int *lattice, int size_x, int size_y, int sign)
+__global__ void initialize_lattice_gpu_cold(int8_t *lattice, int size_x, int size_y, int sign)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -42,7 +42,7 @@ __global__ void initialize_lattice_gpu_cold(int *lattice, int size_x, int size_y
 }
 
 // GPU kernel to initialize lattice (hot case: random spin of each site)
-__global__ void initialize_lattice_gpu_hot(int *lattice, curandState *states, int size_x, int size_y)
+__global__ void initialize_lattice_gpu_hot(int8_t *lattice, curandState *states, int size_x, int size_y)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -57,7 +57,7 @@ __global__ void initialize_lattice_gpu_hot(int *lattice, curandState *states, in
 }
 
 // Evaluate energy
-__global__ void energy_2D_kernel(const int *lattice, float *energy_partial, int size_x, int size_y, float J, float h)
+__global__ void energy_2D_kernel(const int8_t *lattice, float *energy_partial, int size_x, int size_y, float J, float h)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -80,7 +80,7 @@ __global__ void energy_2D_kernel(const int *lattice, float *energy_partial, int 
     }
 }
 
-float energy_2D_gpu(int *d_lattice, int size_x, int size_y, float J, float h)
+float energy_2D_gpu(int8_t *d_lattice, int size_x, int size_y, float J, float h)
 {
     size_t N = size_x * size_y;
     size_t bytes = N * sizeof(float);
@@ -107,8 +107,8 @@ float energy_2D_gpu(int *d_lattice, int size_x, int size_y, float J, float h)
     return energy;
 }
 
-__device__ float d_energy_2D(
-    const int *lattice,
+__device__ __forceinline__ float d_energy_2D( // Check what __forceinline__ do
+    const int8_t *lattice,
     int i, int j,
     int size_x, int size_y,
     float J, float h)
@@ -116,7 +116,7 @@ __device__ float d_energy_2D(
     int idx = i * size_x + j;
     int spin = lattice[idx];
 
-    float sum_nn = 0.0f;
+    int8_t sum_nn = 0;
 
     int right = i * size_x + (j + 1 + size_x) % size_x;
     int left = i * size_x + (j - 1 + size_x) % size_x;
@@ -131,7 +131,7 @@ __device__ float d_energy_2D(
     return 2.0f * spin * (J * sum_nn + h);
 }
 
-__global__ void MH_1color_checkerboard_gpu(int *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, int color)
+__global__ void MH_1color_checkerboard_gpu(int8_t *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, int color)
 {
 
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -161,10 +161,8 @@ __global__ void MH_1color_checkerboard_gpu(int *lattice, curandState *states, in
     }
 }
 
-void MH_checkboard_sweep_gpu(int *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, dim3 grid, dim3 block)
+void MH_checkboard_sweep_gpu(int8_t *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, dim3 grid, dim3 block)
 {
-
-    int N = size_x * size_y;
 
     // Update black sites
     MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, kB, T, 0);
@@ -216,7 +214,7 @@ int main(int argc, char *argv[])
     size_t N = lattice_size_x * lattice_size_y;
     size_t lattice_bytes = N * sizeof(int);
 
-    int *d_lattice = nullptr;
+    int8_t *d_lattice = nullptr;
     cudaMalloc(&d_lattice, lattice_bytes);
 
     dim3 block(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);

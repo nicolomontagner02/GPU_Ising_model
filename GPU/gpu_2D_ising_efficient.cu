@@ -131,7 +131,7 @@ __device__ __forceinline__ float d_energy_2D( // Check what __forceinline__ do
     return 2.0f * spin * (J * sum_nn + h);
 }
 
-__global__ void MH_1color_checkerboard_gpu(int8_t *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, int color)
+__global__ void MH_1color_checkerboard_gpu(int8_t *lattice, curandState *states, int size_x, int size_y, float J, float h, float beta, int color)
 {
 
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -154,23 +154,28 @@ __global__ void MH_1color_checkerboard_gpu(int8_t *lattice, curandState *states,
     else
     {
         float u = curand_uniform(&states[idx]);
-        if (u < expf(-dE / (kB * T)))
+        if (u < __expf(-dE * beta))
         {
             lattice[idx] *= -1;
         }
     }
 }
 
-void MH_checkboard_sweep_gpu(int8_t *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, dim3 grid, dim3 block)
+void MH_checkboard_sweep_gpu(int8_t *lattice, curandState *states, int size_x, int size_y, float J, float h, float beta, dim3 grid, dim3 block)
 {
 
     // Update black sites
-    MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, kB, T, 0);
+    MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, beta, 0);
     cudaDeviceSynchronize();
 
     // Update white sites
-    MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, kB, T, 1);
+    MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, beta, 1);
     cudaDeviceSynchronize();
+}
+
+__global__ void Magnetization(int8_t *lattice, int *magnetization, int size_x, int size_y)
+{
+    // Vedere come si fa la somma su GPU
 }
 
 // ###############################################################
@@ -178,7 +183,7 @@ void MH_checkboard_sweep_gpu(int8_t *lattice, curandState *states, int size_x, i
 // ###############################################################
 
 // Print lattice (host)
-void print_lattice(const int *lattice, int size_x, int size_y)
+void print_lattice(const int8_t *lattice, int size_x, int size_y)
 {
     for (int i = 0; i < size_y; i++)
     {
@@ -212,7 +217,7 @@ int main(int argc, char *argv[])
     float T = 100.0;
 
     size_t N = lattice_size_x * lattice_size_y;
-    size_t lattice_bytes = N * sizeof(int);
+    size_t lattice_bytes = N * sizeof(int8_t);
 
     int8_t *d_lattice = nullptr;
     cudaMalloc(&d_lattice, lattice_bytes);
@@ -246,7 +251,7 @@ int main(int argc, char *argv[])
 
     float energy = energy_2D_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h);
 
-    std::vector<int> lattice(N, 0);
+    std::vector<int8_t> lattice(N, 0);
 
     cudaMemcpy(lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
@@ -261,13 +266,13 @@ int main(int argc, char *argv[])
 
     while (i < 10)
     {
-        MH_checkboard_sweep_gpu(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, kB, T, grid, block);
+        MH_checkboard_sweep_gpu(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, kB * T, grid, block);
         i++;
     }
 
     cudaMemcpy(lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
-    printf("\nLattice after GPU initialization:\n");
+    printf("\nLattice after GPU MH evolution:\n");
     print_lattice(lattice.data(), print_x, print_y);
 
     energy = energy_2D_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h);

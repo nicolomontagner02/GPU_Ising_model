@@ -164,8 +164,6 @@ __global__ void MH_1color_checkerboard_gpu(int *lattice, curandState *states, in
 void MH_checkboard_sweep_gpu(int *lattice, curandState *states, int size_x, int size_y, float J, float h, float kB, float T, dim3 grid, dim3 block)
 {
 
-    int N = size_x * size_y;
-
     // Update black sites
     MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, kB, T, 0);
     cudaDeviceSynchronize();

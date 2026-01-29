@@ -10,12 +10,13 @@
 #define THREADS_PER_BLOCK_Y 16
 #define PRINT_UP_TO 10
 
-#define DEBUG 0
+#define DEBUG 1
 
 // ###############################################################
 // CUDA FUNCTIONS + CALLING
 // ###############################################################
 
+// RNG initialization
 __global__ void init_rng_states(curandState *states, int size_x, int size_y, unsigned long long seed)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -29,6 +30,31 @@ __global__ void init_rng_states(curandState *states, int size_x, int size_y, uns
     }
 }
 
+// RNG initialization tiles
+
+__global__ void init_rng_states_tile(
+    curandState *states,
+    int size_x,
+    int size_y,
+    unsigned long long seed,
+    int start_x,
+    int start_y,
+    int tile_x,
+    int tile_y)
+{
+    int local_row = threadIdx.y;
+    int local_col = threadIdx.x;
+
+    int row = start_y + blockIdx.y * blockDim.y + local_row;
+    int col = start_x + blockIdx.x * blockDim.x + local_col;
+
+    if (row >= start_y + tile_y || row >= size_y || col >= start_x + tile_x || col >= size_x)
+        return;
+
+    int idx = row * size_x + col;
+    curand_init(seed, idx, 0, &states[idx]);
+}
+
 // GPU kernel to initialize lattice (cold start: all spins +1 or -1)
 __global__ void initialize_lattice_gpu_cold(int8_t *lattice, int size_x, int size_y, int sign)
 {
@@ -38,6 +64,50 @@ __global__ void initialize_lattice_gpu_cold(int8_t *lattice, int size_x, int siz
     if (row < size_y && col < size_x)
     {
         lattice[row * size_x + col] = sign;
+    }
+}
+
+void init_rng_states_gpu_tiled(
+    curandState *d_states,
+    int size_x,
+    int size_y,
+    unsigned long long seed,
+    dim3 block,
+    int tile_x,
+    int tile_y)
+{
+    dim3 grid;
+
+    for (int start_y = 0; start_y < size_y; start_y += tile_y)
+    {
+        int ty = min(tile_y, size_y - start_y);
+
+        for (int start_x = 0; start_x < size_x; start_x += tile_x)
+        {
+            int tx = min(tile_x, size_x - start_x);
+
+            grid.x = (tx + block.x - 1) / block.x;
+            grid.y = (ty + block.y - 1) / block.y;
+
+            init_rng_states_tile<<<grid, block>>>(
+                d_states,
+                size_x,
+                size_y,
+                seed,
+                start_x,
+                start_y,
+                tx,
+                ty);
+
+            cudaError_t err = cudaDeviceSynchronize();
+            if (err != cudaSuccess)
+            {
+                printf("CUDA error during RNG init tile (%d,%d): %s\n",
+                       start_x, start_y,
+                       cudaGetErrorString(err));
+                exit(1);
+            }
+        }
     }
 }
 
@@ -174,60 +244,149 @@ __inline__ __device__ int warp_reduce_sum_int(int val)
     return val;
 }
 
-__global__ void magnetization_2D_kernel(const int8_t *lattice,
-                                        int *magnetization,
-                                        int size_x,
-                                        int size_y)
-{
-    int idx = blockIdx.y * blockDim.y * size_x +
-              blockIdx.x * blockDim.x +
-              threadIdx.y * size_x +
-              threadIdx.x;
+// Tile subdivision of the lattice to work on large lattices
 
+__global__ void MH_1color_checkerboard_tile_gpu(
+    int8_t *lattice,
+    curandState *states,
+    int size_x,
+    int size_y,
+    float J,
+    float h,
+    float beta,
+    int color,
+    int start_x,
+    int start_y,
+    int tile_x,
+    int tile_y)
+{
+    int local_row = threadIdx.y;
+    int local_col = threadIdx.x;
+
+    int row = start_y + local_row + blockIdx.y * blockDim.y;
+    int col = start_x + local_col + blockIdx.x * blockDim.x;
+
+    if (row >= start_y + tile_y || col >= start_x + tile_x || row >= size_y || col >= size_x)
+        return;
+
+    // Only update spins of the given color
+    if (((row + col) & 1) != color)
+        return;
+
+    int idx = row * size_x + col;
+
+    float dE = d_energy_2D(lattice, row, col, size_x, size_y, J, h);
+
+    if (dE <= 0.0f)
+    {
+        lattice[idx] *= -1;
+    }
+    else
+    {
+        float u = curand_uniform(&states[idx]);
+        if (u < __expf(-dE * beta))
+        {
+            lattice[idx] *= -1;
+        }
+    }
+}
+
+void MH_checkboard_sweep_gpu_tiled(
+    int8_t *lattice,
+    curandState *states,
+    int size_x,
+    int size_y,
+    float J,
+    float h,
+    float beta,
+    int tile_x,
+    int tile_y,
+    dim3 block)
+{
+    dim3 grid;
+
+    for (int color = 0; color < 2; color++) // black and white
+    {
+        for (int start_y = 0; start_y < size_y; start_y += tile_y)
+        {
+            int ty = min(tile_y, size_y - start_y);
+
+            for (int start_x = 0; start_x < size_x; start_x += tile_x)
+            {
+                int tx = min(tile_x, size_x - start_x);
+
+                grid.x = (tx + block.x - 1) / block.x;
+                grid.y = (ty + block.y - 1) / block.y;
+
+                MH_1color_checkerboard_tile_gpu<<<grid, block>>>(
+                    lattice,
+                    states,
+                    size_x,
+                    size_y,
+                    J,
+                    h,
+                    beta,
+                    color,
+                    start_x,
+                    start_y,
+                    tx,
+                    ty);
+
+                cudaDeviceSynchronize(); // wait for this tile
+            }
+        }
+    }
+}
+
+__global__ void magnetization_2D_kernel(
+    const int8_t *lattice,
+    int *magnetization,
+    int N)
+{
+    extern __shared__ int sdata[];
+
+    int tid = threadIdx.x;
+    int global_tid = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
 
     int local_sum = 0;
 
-    // Grid-stride loop (1D over flattened lattice)
-    for (int i = idx; i < size_x * size_y; i += stride)
+    // Grid-stride loop over lattice
+    for (int i = global_tid; i < N; i += stride)
         local_sum += lattice[i];
 
-    // Warp-level reduction
-    local_sum = warp_reduce_sum_int(local_sum);
-
-    __shared__ int warp_sums[32]; // max 1024 threads
-
-    int lane = threadIdx.x % warpSize;
-    int warp = threadIdx.x / warpSize;
-
-    if (lane == 0)
-        warp_sums[warp] = local_sum;
-
+    // Store in shared memory
+    sdata[tid] = local_sum;
     __syncthreads();
 
-    // Final reduction by first warp
-    if (warp == 0)
+    // Block reduction
+    for (int s = blockDim.x / 2; s > 0; s >>= 1)
     {
-        local_sum = (lane < (blockDim.x / warpSize)) ? warp_sums[lane] : 0;
-        local_sum = warp_reduce_sum_int(local_sum);
-
-        if (lane == 0)
-            atomicAdd(magnetization, local_sum);
+        if (tid < s)
+            sdata[tid] += sdata[tid + s];
+        __syncthreads();
     }
+
+    // One atomic per block
+    if (tid == 0)
+        atomicAdd(magnetization, sdata[0]);
 }
 
 int magnetization_2D_gpu(int8_t *d_lattice,
                          int size_x,
-                         int size_y,
-                         dim3 grid,
-                         dim3 block)
+                         int size_y)
 {
+    int N = size_x * size_y;
+
     int *d_mag;
     cudaMalloc(&d_mag, sizeof(int));
     cudaMemset(d_mag, 0, sizeof(int));
 
-    magnetization_2D_kernel<<<grid, block>>>(
-        d_lattice, d_mag, size_x, size_y);
+    int threads = 256;
+    int blocks = (N + threads - 1) / threads;
+
+    magnetization_2D_kernel<<<blocks, threads, threads * sizeof(int)>>>(
+        d_lattice, d_mag, N);
 
     int h_mag;
     cudaMemcpy(&h_mag, d_mag, sizeof(int), cudaMemcpyDeviceToHost);
@@ -271,8 +430,9 @@ int main(int argc, char *argv[])
     // int sign = -1;
     float J = 1;
     float h = 1;
-    float kB = 1e-23;
-    float T = 100.0;
+    float kB = 1.0;
+    float T = 1.0;
+    float beta = 1 / T / kB;
 
     size_t N = lattice_size_x * lattice_size_y;
     size_t lattice_bytes = N * sizeof(int8_t);
@@ -290,9 +450,36 @@ int main(int argc, char *argv[])
 
     unsigned long long seed = (unsigned long long)time(NULL);
 
-    // RNG initialization
-    init_rng_states<<<grid, block>>>(d_rng_states, lattice_size_x, lattice_size_y, seed);
-    cudaDeviceSynchronize();
+    // // RNG initialization
+    // init_rng_states<<<grid, block>>>(d_rng_states, lattice_size_x, lattice_size_y, seed);
+    // cudaDeviceSynchronize();
+
+    int tile_size = 128; // safe starting point for Jetson Nano
+
+    init_rng_states_gpu_tiled(
+        d_rng_states,
+        lattice_size_x,
+        lattice_size_y,
+        seed,
+        block,
+        tile_size,
+        tile_size);
+
+    cudaError_t err;
+
+    err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        printf("After init_rng_states: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess)
+    {
+        printf("Sync error: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
 
     // Hot initialization of the lattice
     initialize_lattice_gpu_hot<<<grid, block>>>(d_lattice, d_rng_states, lattice_size_x, lattice_size_y);
@@ -300,7 +487,7 @@ int main(int argc, char *argv[])
 
     cudaDeviceSynchronize();
 
-    cudaError_t err = cudaGetLastError();
+    err = cudaGetLastError();
     if (err != cudaSuccess)
     {
         printf("CUDA error: %s\n", cudaGetErrorString(err));
@@ -320,11 +507,7 @@ int main(int argc, char *argv[])
 
     printf("Energy: %f\n", energy);
 
-    int M = magnetization_2D_gpu(d_lattice,
-                                 lattice_size_x,
-                                 lattice_size_y,
-                                 grid,
-                                 block);
+    int M = magnetization_2D_gpu(d_lattice, lattice_size_x, lattice_size_y);
 
     printf("Magnetization: %d\n", M);
 
@@ -332,7 +515,10 @@ int main(int argc, char *argv[])
 
     while (i < 10)
     {
-        MH_checkboard_sweep_gpu(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, kB * T, grid, block);
+        MH_checkboard_sweep_gpu(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, beta, grid, block);
+
+        // int tile_size = 128; // tune for Nano
+        // MH_checkboard_sweep_gpu_tiled(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, beta, tile_size, tile_size, block);
 
         if (DEBUG)
         {
@@ -342,27 +528,18 @@ int main(int argc, char *argv[])
         i++;
     }
 
-    std::vector<int8_t> lattice_f(N, 0);
-
-    cudaMemcpy(lattice_f.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
+    cudaMemcpy(lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
     printf("\nLattice after GPU MH evolution:\n");
-    print_lattice(lattice_f.data(), print_x, print_y);
+    print_lattice(lattice.data(), print_x, print_y);
 
-    float energy_f;
-    int M_f;
+    energy = energy_2D_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h);
 
-    energy_f = energy_2D_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h);
+    printf("Energy: %f\n", energy);
 
-    printf("Energy: %f\n", energy_f);
+    M = magnetization_2D_gpu(d_lattice, lattice_size_x, lattice_size_y);
 
-    M_f = magnetization_2D_gpu(d_lattice,
-                               lattice_size_x,
-                               lattice_size_y,
-                               grid,
-                               block);
-
-    printf("Magnetization: %d\n", M_f);
+    printf("Magnetization: %d\n", M);
 
     cudaFree(d_lattice);
     cudaFree(d_rng_states);

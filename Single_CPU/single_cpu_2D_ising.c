@@ -122,17 +122,24 @@ int magnetisation_2D(int **lattice, int size_x, int size_y)
     return magnetisation;
 }
 
-float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y, float J, float h)
+float d_energy_2D(int **lattice, int i, int j,
+                  int size_x, int size_y,
+                  float J, float h)
 {
     int spin = lattice[i][j];
     float sum_nn = 0.0f;
 
-    sum_nn += lattice[(i - 1) % size_x][j];
-    sum_nn += lattice[(i + 1) % size_x][j];
-    sum_nn += lattice[i][(j - 1) % size_y];
-    sum_nn += lattice[i][(j + 1) % size_y];
+    int ip = (i + 1) % size_x;
+    int im = (i - 1 + size_x) % size_x;
+    int jp = (j + 1) % size_y;
+    int jm = (j - 1 + size_y) % size_y;
 
-    return 2 * spin * (J * sum_nn + h);
+    sum_nn += lattice[im][j];
+    sum_nn += lattice[ip][j];
+    sum_nn += lattice[i][jm];
+    sum_nn += lattice[i][jp];
+
+    return 2.0f * spin * (J * sum_nn + h);
 }
 
 float energy_density_2D(float energy, int size_x, int size_y)
@@ -202,7 +209,7 @@ void report_state(const char *label, int **lattice, int size_x, int size_y, floa
     printf("----------------------------------------\n");
     printf("Total energy        : %f\n", E);
     printf("Energy density      : %f\n", e_density);
-    printf("Magnetisation       : %f\n", m);
+    printf("Magnetisation       : %i\n", m);
     printf("Magnetisation/spin  : %f\n", (float)m / (float)N);
 
     if (size_x <= 4 && size_y <= 4)

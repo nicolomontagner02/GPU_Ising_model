@@ -1,6 +1,6 @@
-CC=nvc
+CC=nvcc
 
-CFLAGS= -g -O0 -mp -acc -acc=noautopar -gpu=cc61 -gpu=cuda12.9 -Minfo=all
+CFLAGS= -g -O0
 
 # Assume all .c files correspond to a program to build.
 TARGETS=$(patsubst %.c,%,$(wildcard *.c))

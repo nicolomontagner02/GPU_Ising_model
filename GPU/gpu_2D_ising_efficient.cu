@@ -107,11 +107,7 @@ float energy_2D_gpu(int8_t *d_lattice, int size_x, int size_y, float J, float h)
     return energy;
 }
 
-__device__ __forceinline__ float d_energy_2D( // Check what __forceinline__ do
-    const int8_t *lattice,
-    int i, int j,
-    int size_x, int size_y,
-    float J, float h)
+__device__ __forceinline__ float d_energy_2D(const int8_t *lattice, int i, int j, int size_x, int size_y, float J, float h)
 {
     int idx = i * size_x + j;
     int spin = lattice[idx];
@@ -166,16 +162,78 @@ void MH_checkboard_sweep_gpu(int8_t *lattice, curandState *states, int size_x, i
 
     // Update black sites
     MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, beta, 0);
-    cudaDeviceSynchronize();
 
     // Update white sites
     MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, beta, 1);
-    cudaDeviceSynchronize();
 }
 
-__global__ void Magnetization(int8_t *lattice, int *magnetization, int size_x, int size_y)
+__inline__ __device__ int warp_reduce_sum_int(int val)
 {
-    // Vedere come si fa la somma su GPU
+    for (int offset = warpSize / 2; offset > 0; offset >>= 1)
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
+__global__ void magnetization_2D_kernel(const int8_t *lattice,
+                                        int *magnetization,
+                                        int size_x,
+                                        int size_y)
+{
+    int idx = blockIdx.y * blockDim.y * size_x +
+              blockIdx.x * blockDim.x +
+              threadIdx.y * size_x +
+              threadIdx.x;
+
+    int stride = blockDim.x * gridDim.x;
+
+    int local_sum = 0;
+
+    // Grid-stride loop (1D over flattened lattice)
+    for (int i = idx; i < size_x * size_y; i += stride)
+        local_sum += lattice[i];
+
+    // Warp-level reduction
+    local_sum = warp_reduce_sum_int(local_sum);
+
+    __shared__ int warp_sums[32]; // max 1024 threads
+
+    int lane = threadIdx.x % warpSize;
+    int warp = threadIdx.x / warpSize;
+
+    if (lane == 0)
+        warp_sums[warp] = local_sum;
+
+    __syncthreads();
+
+    // Final reduction by first warp
+    if (warp == 0)
+    {
+        local_sum = (lane < (blockDim.x / warpSize)) ? warp_sums[lane] : 0;
+        local_sum = warp_reduce_sum_int(local_sum);
+
+        if (lane == 0)
+            atomicAdd(magnetization, local_sum);
+    }
+}
+
+int magnetization_2D_gpu(int8_t *d_lattice,
+                         int size_x,
+                         int size_y,
+                         dim3 grid,
+                         dim3 block)
+{
+    int *d_mag;
+    cudaMalloc(&d_mag, sizeof(int));
+    cudaMemset(d_mag, 0, sizeof(int));
+
+    magnetization_2D_kernel<<<grid, block>>>(
+        d_lattice, d_mag, size_x, size_y);
+
+    int h_mag;
+    cudaMemcpy(&h_mag, d_mag, sizeof(int), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_mag);
+    return h_mag;
 }
 
 // ###############################################################
@@ -262,22 +320,49 @@ int main(int argc, char *argv[])
 
     printf("Energy: %f\n", energy);
 
+    int M = magnetization_2D_gpu(d_lattice,
+                                 lattice_size_x,
+                                 lattice_size_y,
+                                 grid,
+                                 block);
+
+    printf("Magnetization: %d\n", M);
+
     int i = 0;
 
     while (i < 10)
     {
         MH_checkboard_sweep_gpu(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, kB * T, grid, block);
+
+        if (DEBUG)
+        {
+            printf("Sweep %i\n", i + 1);
+        }
+
         i++;
     }
 
-    cudaMemcpy(lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
+    std::vector<int8_t> lattice_f(N, 0);
+
+    cudaMemcpy(lattice_f.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
     printf("\nLattice after GPU MH evolution:\n");
-    print_lattice(lattice.data(), print_x, print_y);
+    print_lattice(lattice_f.data(), print_x, print_y);
 
-    energy = energy_2D_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h);
+    float energy_f;
+    int M_f;
 
-    printf("Energy: %f\n", energy);
+    energy_f = energy_2D_gpu(d_lattice, lattice_size_x, lattice_size_y, J, h);
+
+    printf("Energy: %f\n", energy_f);
+
+    M_f = magnetization_2D_gpu(d_lattice,
+                               lattice_size_x,
+                               lattice_size_y,
+                               grid,
+                               block);
+
+    printf("Magnetization: %d\n", M_f);
 
     cudaFree(d_lattice);
     cudaFree(d_rng_states);

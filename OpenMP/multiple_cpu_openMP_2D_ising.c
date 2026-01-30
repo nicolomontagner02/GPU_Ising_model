@@ -3,7 +3,7 @@
 #include <time.h>
 #include <math.h>
 #include <omp.h>
-#include "../functions.h"
+#include "../s_functions.h"
 
 #define DEBUG 0
 

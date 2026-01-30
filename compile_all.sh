@@ -1,22 +1,65 @@
+#!/bin/bash
+
 # ---------------------------------------------------------
 # MASTER COMPILATION FILE
 # ---------------------------------------------------------
 
-# Compile the different files
-echo "=== Compiling single CPU code ==="
-gcc -O$1 -c Single_CPU/single_cpu_2D_ising.c -o Single_CPU/single_cpu_2D_ising.o
-echo "=== Compiling multiple CPU code ==="
-gcc -O$1 -fopenmp -c OpenMP/multiple_cpu_openMP_2D_ising.c -o OpenMP/multiple_cpu_openMP_2D_ising.o -lm
-echo "=== Compiling GPU code ==="
-# nvcc -O$1 -c GPU/gpu_2D_ising.cu -o GPU/gpu_2D_ising.o
-echo "=== Compiling efficient GPU code ==="
-nvcc -O$1 -c GPU/gpu_2D_ising_efficient.cu -o GPU/gpu_2D_ising_efficient.o
+# Usage:
+#   ./compile_all.sh <O-level> [build_all]
+# Example:
+#   ./compile_all.sh 3 1
 
-# Compile the merged simulation
+OLEVEL=$2
+BUILD_ALL=$1
+
+if [ -z "$OLEVEL" ]; then
+    echo "Usage: $0 <O-level> [build_all]"
+    exit 1
+fi
+
+# ---------------------------------------------------------
+# Compile backend implementations
+# ---------------------------------------------------------
+
+if [ "$BUILD_ALL" = "1" ]; then
+
+    echo "=== Compiling single CPU code ==="
+    gcc -O${OLEVEL} -c Single_CPU/single_cpu_2D_ising.c \
+        -o Single_CPU/single_cpu_2D_ising.o
+
+    echo "=== Compiling OpenMP CPU code ==="
+    gcc -O${OLEVEL} -fopenmp -c OpenMP/multiple_cpu_openMP_2D_ising.c \
+        -o OpenMP/multiple_cpu_openMP_2D_ising.o
+
+    echo "=== Compiling GPU code ==="
+    nvcc -O${OLEVEL} -c GPU/gpu_2D_ising.cu \
+        -o GPU/gpu_2D_ising.o
+
+    echo "=== Compiling efficient GPU code ==="
+    nvcc -O${OLEVEL} -c GPU/gpu_2D_ising_efficient.cu \
+        -o GPU/gpu_2D_ising_efficient.o
+fi
+
+# ---------------------------------------------------------
+# Compile merged simulation (host code)
+# ---------------------------------------------------------
+
 echo "=== Compiling merged simulation ==="
-nvcc -O$1 -c Ising_simulations.c -o Ising_simulations.o
+gcc -O${OLEVEL} -c Ising_simulations.c -o Ising_simulations.o
 
-# Link the compiled files
+# ---------------------------------------------------------
+# Link everything
+# ---------------------------------------------------------
+
 echo "=== Linking compiled files ==="
-# nvcc Ising_simulations.o Single_CPU/single_cpu_2D_ising.o OpenMP/multiple_cpu_openMP_2D_ising.o GPU/gpu_2D_ising.o GPU/gpu_2D_ising_efficient.o -o Ising_simulations
-gcc Ising_simulations.o Single_CPU/single_cpu_2D_ising.o OpenMP/multiple_cpu_openMP_2D_ising.o GPU/gpu_2D_ising_efficient.o -L/usr/local/cuda/lib64 -lcudart -lstdc++ -fopenmp -o Ising_simulations -lm
+
+g++ Ising_simulations.o \
+    Single_CPU/single_cpu_2D_ising.o \
+    OpenMP/multiple_cpu_openMP_2D_ising.o \
+    GPU/gpu_2D_ising.o \
+    GPU/gpu_2D_ising_efficient.o \
+    -L/usr/local/cuda/lib64 \
+    -lcudart \
+    -fopenmp \
+    -lm \
+    -o Ising_simulations

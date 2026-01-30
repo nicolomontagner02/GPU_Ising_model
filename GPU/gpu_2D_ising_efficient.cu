@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <vector>
+#include <random>
 #include <algorithm>
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
@@ -125,6 +126,35 @@ __global__ void initialize_lattice_gpu_hot(int8_t *lattice, curandState *states,
         lattice[idx] = (r < 0.5f) ? -1 : 1;
     }
 }
+
+__device__ __forceinline__ float rng_uniform_stateless(
+    unsigned long long seed,
+    unsigned long long counter)
+{
+    curandStatePhilox4_32_10 state;
+    curand_init(seed, counter, 0, &state);
+    return curand_uniform(&state);
+}
+
+__global__ void initialize_lattice_gpu_hot_counter(int8_t *lattice, unsigned long long seed, int size_x, int size_y)
+{
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < size_y && col < size_x)
+    {
+        int idx = row * size_x + col;
+
+        unsigned long counter = (unsigned long long)(size_x * size_y) + idx;
+
+        float r = rng_uniform_stateless(seed, counter);
+        lattice[idx] = (r < 0.5f) ? -1 : 1;
+    }
+}
+
+// #######################################################################################################
+// ENERGY & MAGNETIZATION
+// #######################################################################################################
 
 // Evaluate energy
 __global__ void energy_2D_kernel(const int8_t *lattice, float *energy_partial, int size_x, int size_y, float J, float h)
@@ -338,6 +368,50 @@ void MH_checkboard_sweep_gpu_tiled(
     }
 }
 
+// Using counter for RNG
+
+__global__ void MH_1color_checkerboard_gpu_count(int8_t *lattice, float seed, int size_x, int size_y, float J, float h, float beta, int color, int sweep)
+{
+
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row >= size_y || col >= size_x)
+        return;
+
+    if (((row + col) & 1) != color)
+        return;
+
+    int idx = row * size_x + col;
+
+    float dE = d_energy_2D(lattice, row, col, size_x, size_y, J, h);
+
+    if (dE <= 0.0f)
+    {
+        lattice[idx] *= -1;
+    }
+    else
+    {
+        unsigned long long counter = sweep * (unsigned long long)(size_x * size_y) * 2 + color * (unsigned long long)(size_x * size_y) + idx;
+
+        float u = rng_uniform_stateless(seed, counter);
+        if (u < __expf(-dE * beta))
+        {
+            lattice[idx] *= -1;
+        }
+    }
+}
+
+void MH_checkboard_sweep_gpu_counter(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, dim3 grid, dim3 block, int sweep)
+{
+
+    // Update black sites
+    MH_1color_checkerboard_gpu_count<<<grid, block>>>(lattice, seed, size_x, size_y, J, h, beta, 0, sweep);
+
+    // Update white sites
+    MH_1color_checkerboard_gpu_count<<<grid, block>>>(lattice, seed, size_x, size_y, J, h, beta, 1, sweep);
+}
+
 __global__ void magnetization_2D_kernel(
     const int8_t *lattice,
     int *magnetization,
@@ -396,6 +470,86 @@ int magnetization_2D_gpu(int8_t *d_lattice,
 }
 
 // ###############################################################
+// Sanity check of the hot initialized lattice
+
+__global__ void hot_lattice_sanity_kernel(
+    const int8_t *lattice,
+    int size_x,
+    int size_y,
+    int *magnetization,
+    int *spin_sum,
+    int *nn_corr_sum)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = size_x * size_y;
+
+    if (idx >= N)
+        return;
+
+    int s = lattice[idx];
+
+    // Magnetization & spin balance
+    atomicAdd(magnetization, s);
+    atomicAdd(spin_sum, s);
+
+    // Nearest neighbors (right + down, periodic)
+    int row = idx / size_x;
+    int col = idx % size_x;
+
+    int right = row * size_x + (col + 1) % size_x;
+    int down = ((row + 1) % size_y) * size_x + col;
+
+    int corr = s * (lattice[right] + lattice[down]);
+    atomicAdd(nn_corr_sum, corr);
+}
+
+bool check_hot_lattice_randomness(
+    const int8_t *d_lattice,
+    int size_x,
+    int size_y)
+{
+    int N = size_x * size_y;
+
+    int *d_M, *d_S, *d_C;
+    cudaMalloc(&d_M, sizeof(int));
+    cudaMalloc(&d_S, sizeof(int));
+    cudaMalloc(&d_C, sizeof(int));
+
+    cudaMemset(d_M, 0, sizeof(int));
+    cudaMemset(d_S, 0, sizeof(int));
+    cudaMemset(d_C, 0, sizeof(int));
+
+    int threads = 256;
+    int blocks = (N + threads - 1) / threads;
+
+    hot_lattice_sanity_kernel<<<blocks, threads>>>(
+        d_lattice, size_x, size_y,
+        d_M, d_S, d_C);
+
+    int M, S, C;
+    cudaMemcpy(&M, d_M, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&S, d_S, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&C, d_C, sizeof(int), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_M);
+    cudaFree(d_S);
+    cudaFree(d_C);
+
+    double sqrtN = sqrt((double)N);
+
+    // Thresholds
+    double max_M = 2.0 * sqrtN;
+    double max_S = 2.0 * sqrtN;
+    double max_C = 0.05 * N;
+
+    bool ok_M = fabs((double)M) < max_M;
+    bool ok_S = fabs((double)S) < max_S;
+    bool ok_C = fabs((double)C) < max_C;
+
+    return ok_M && ok_S && ok_C;
+}
+
+// ###############################################################
 // HELPER FUNCTIONS
 // ###############################################################
 
@@ -445,8 +599,8 @@ int main(int argc, char *argv[])
         (lattice_size_x + block.x - 1) / block.x,
         (lattice_size_y + block.y - 1) / block.y);
 
-    curandState *d_rng_states = nullptr;
-    cudaMalloc(&d_rng_states, N * sizeof(curandState));
+    // curandState *d_rng_states = nullptr;
+    // cudaMalloc(&d_rng_states, N * sizeof(curandState));
 
     unsigned long long seed = (unsigned long long)time(NULL);
 
@@ -454,43 +608,77 @@ int main(int argc, char *argv[])
     // init_rng_states<<<grid, block>>>(d_rng_states, lattice_size_x, lattice_size_y, seed);
     // cudaDeviceSynchronize();
 
-    int tile_size = 128; // safe starting point for Jetson Nano
+    // int tile_size = 128; // safe starting point for Jetson Nano
 
-    init_rng_states_gpu_tiled(
-        d_rng_states,
-        lattice_size_x,
-        lattice_size_y,
-        seed,
-        block,
-        tile_size,
-        tile_size);
+    // init_rng_states_gpu_tiled(
+    //     d_rng_states,
+    //     lattice_size_x,
+    //     lattice_size_y,
+    //     seed,
+    //     block,
+    //     tile_size,
+    //     tile_size);
+
+    // std::vector<curandState> h_states(N);
+    // for (int idx = 0; idx < N; idx++)
+    //     curand_init(seed, idx, 0, &h_states[idx]);
+
+    // cudaMemcpy(d_rng_states, h_states.data(), N * sizeof(curandState), cudaMemcpyHostToDevice);
+
+    // cudaError_t err;
+
+    // err = cudaGetLastError();
+    // if (err != cudaSuccess)
+    // {
+    //     printf("After init_rng_states: %s\n", cudaGetErrorString(err));
+    //     return 1;
+    // }
+
+    // err = cudaDeviceSynchronize();
+    // if (err != cudaSuccess)
+    // {
+    //     printf("Sync error: %s\n", cudaGetErrorString(err));
+    //     return 1;
+    // }
 
     cudaError_t err;
+    int initialization = 1; // 0 for cold 1 for hot
 
-    err = cudaGetLastError();
-    if (err != cudaSuccess)
+    if (initialization == 0)
     {
-        printf("After init_rng_states: %s\n", cudaGetErrorString(err));
-        return 1;
+        // Cold initialization of the lattice
+        initialize_lattice_gpu_cold<<<grid, block>>>(d_lattice, lattice_size_x, lattice_size_y, -1);
     }
-
-    err = cudaDeviceSynchronize();
-    if (err != cudaSuccess)
+    else if (initialization == 1)
     {
-        printf("Sync error: %s\n", cudaGetErrorString(err));
-        return 1;
+        // Hot initialization of the lattice
+        initialize_lattice_gpu_hot_counter<<<grid, block>>>(d_lattice, seed, lattice_size_x, lattice_size_y);
+        //
+
+        bool is_random = check_hot_lattice_randomness(d_lattice, lattice_size_x, lattice_size_y);
+
+        cudaDeviceSynchronize();
+
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("CUDA error: %s\n", cudaGetErrorString(err));
+            return 1;
+        }
+
+        if (is_random)
+        {
+            printf("The random generated lattice is effectivly random!");
+        }
+        else
+        {
+            printf("The hot generated lattice is not random.");
+            return 1;
+        }
     }
-
-    // Hot initialization of the lattice
-    initialize_lattice_gpu_hot<<<grid, block>>>(d_lattice, d_rng_states, lattice_size_x, lattice_size_y);
-    // initialize_lattice_gpu_cold<<<grid, block>>>(d_lattice, lattice_size_x, lattice_size_y, -1);
-
-    cudaDeviceSynchronize();
-
-    err = cudaGetLastError();
-    if (err != cudaSuccess)
+    else
     {
-        printf("CUDA error: %s\n", cudaGetErrorString(err));
+        printf("Wrong initialization choice (0 or 1).");
         return 1;
     }
 
@@ -515,7 +703,7 @@ int main(int argc, char *argv[])
 
     while (i < 10)
     {
-        MH_checkboard_sweep_gpu(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, beta, grid, block);
+        MH_checkboard_sweep_gpu_counter(d_lattice, seed, lattice_size_x, lattice_size_y, J, h, beta, grid, block, i);
 
         // int tile_size = 128; // tune for Nano
         // MH_checkboard_sweep_gpu_tiled(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, beta, tile_size, tile_size, block);
@@ -542,6 +730,6 @@ int main(int argc, char *argv[])
     printf("Magnetization: %d\n", M);
 
     cudaFree(d_lattice);
-    cudaFree(d_rng_states);
+    // cudaFree(d_rng_states);
     return 0;
 }

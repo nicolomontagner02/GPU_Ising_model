@@ -570,6 +570,7 @@ void print_lattice(const int8_t *lattice, int size_x, int size_y)
 // MAIN
 // ###############################################################
 
+#ifdef STANDALONE_BUILD
 int main(int argc, char *argv[])
 {
     if (argc != 3)
@@ -733,3 +734,4 @@ int main(int argc, char *argv[])
     // cudaFree(d_rng_states);
     return 0;
 }
+#endif

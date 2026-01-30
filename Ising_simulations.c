@@ -5,7 +5,7 @@
 #include "s_functions.h"
 #include "m_functions.h"
 #include "g_functions.h"
-// #include "ge_functions.h"
+#include "ge_functions.h"
 
 int main(int argc, char *argv[])
 {
@@ -23,11 +23,11 @@ int main(int argc, char *argv[])
     int lattice_size_y = atoi(argv[2]);
 
     int type = 3;
-    float J = 0;
+    float J = 1;
     float h = 1;
-    float kB = 1.0 * exp(-23);
-    float T = 100;
-    int n_steps = 100000;
+    float kB = 1.0;
+    float T = 1;
+    int n_steps = 10000000;
     int n_sweeps = (int)(n_steps / lattice_size_x / lattice_size_y);
     n_sweeps = fmax(1, n_sweeps);
 
@@ -107,6 +107,32 @@ int main(int argc, char *argv[])
     printf("Initialization time (s)        : %f\n", out2.initialization_time);
     printf("MH evolution time (s)          : %f\n", out2.MH_evolution_time);
     printf("MH time per step (s)           : %e\n", out2.MH_evolution_time_over_steps);
+
+    // cuda part 1st
+
+    printf("========================================\n");
+    printf("2D Ising Model — GPU\n");
+    printf("========================================\n");
+    printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
+    printf("Interaction J       : %.3f\n", J);
+    printf("External field h    : %.3f\n", h);
+    printf("Temperature T       : %.3f\n", T);
+    printf("# sweeps            : %d\n", n_sweeps);
+    printf("Initialization type : %s\n",
+           type == 1 ? "All up" : type == 2 ? "All down"
+                                            : "Random");
+    printf("\n");
+    printf("========================================\n");
+
+    Observables out3 = run_ising_simulation_efficient_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
+
+    printf("Energy                : %f\n", out3.E);
+    printf("Energy density        : %f\n", out3.e_density);
+    printf("Magnetization         : %f\n", out3.m);
+    printf("Magnetization density : %f\n", out3.m_density);
+    printf("Initialization time (s)        : %f\n", out3.initialization_time);
+    printf("MH evolution time (s)          : %f\n", out3.MH_evolution_time);
+    printf("MH time per step (s)           : %e\n", out3.MH_evolution_time_over_steps);
 
     return 0;
 }

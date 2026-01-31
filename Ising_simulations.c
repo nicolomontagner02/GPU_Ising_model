@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
     printf("\n");
     printf("========================================\n");
 
-    Observables out1 = run_ising_simulation_openmp(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
+    Observables out1 = run_ising_simulation_openmp(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
 
     printf("Energy                : %f\n", out1.E);
     printf("Energy density        : %f\n", out1.e_density);
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
     printf("\n");
     printf("========================================\n");
 
-    Observables out2 = run_ising_simulation_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
+    Observables out2 = run_ising_simulation_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
 
     printf("Energy                : %f\n", out2.E);
     printf("Energy density        : %f\n", out2.e_density);
@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
     printf("\n");
     printf("========================================\n");
 
-    Observables out3 = run_ising_simulation_efficient_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
+    Observables out3 = run_ising_simulation_efficient_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
 
     printf("Energy                : %f\n", out3.E);
     printf("Energy density        : %f\n", out3.e_density);

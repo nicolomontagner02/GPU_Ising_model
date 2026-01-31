@@ -390,7 +390,7 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     // ============================================================
     // Optional sanity check (only for hot start)
     // ============================================================
-    if (type == 1)
+    if (type == 3)
     {
         bool ok = check_hot_lattice_randomness(
             d_lattice, lattice_size_x, lattice_size_y);
@@ -404,7 +404,7 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     // ============================================================
     // Metropolis–Hastings evolution
     // ============================================================
-    int n_sweeps = (int)n_steps / lattice_size_x * lattice_size_y;
+    int n_sweeps = (int)n_steps / lattice_size_x / lattice_size_y;
     n_sweeps = fmax(1, n_sweeps);
 
     t0 = clock();

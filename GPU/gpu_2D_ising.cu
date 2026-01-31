@@ -399,7 +399,7 @@ extern "C" Observables run_ising_simulation_gpu(
     /* -------------------------------------------------- */
     /* Metropolis–Hastings evolution                      */
     /* -------------------------------------------------- */
-    int n_sweeps = (int)n_steps / lattice_size_x * lattice_size_y;
+    int n_sweeps = (int)n_steps / lattice_size_x / lattice_size_y;
     n_sweeps = fmax(1, n_sweeps);
 
     t0 = clock();

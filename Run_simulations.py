@@ -53,18 +53,20 @@ BACKENDS = {
 # Parameter space
 # ------------------------------------------------------------
 
-lattice_sizes = [64, 128]      # square lattices
-J_values      = [1.0]
+n_repetition = 10
+
+lattice_sizes = [128, 256, 512]      # square lattices
+J_values      = [0.0, 1.0]
 h_values      = [0.0, 0.5]
-T_values      = [0.5, 1.0, 2.0]
+T_values      = [0.5, 2.0, 10.0]
 init_types    = {
-    # 1: "all_up",
-    # 2: "all_down",
+    1: "all_up",
+    2: "all_down",
     3: "random",
 }
 
 kB = 1.0
-n_steps = 1_000   # MC steps (CPU) or sweeps-derived internally
+n_steps = 100_000   # MC steps (CPU) or sweeps-derived internally
 
 # ------------------------------------------------------------
 # Output CSV
@@ -115,28 +117,34 @@ with open(csv_name, "w", newline="") as f:
                 f"J={J:.2f} h={h:.2f} T={T:.2f}"
             )
 
-            obs = backend_fn(
-                L, L,
-                type_id,
-                J, h, kB, T,
-                n_steps
-            )
+            i = 0
 
-            writer.writerow({
-                "backend": backend_name,
-                "L": L,
-                "init_type": type_name,
-                "J": J,
-                "h": h,
-                "T": T,
-                "n_steps": n_steps,
-                "E": obs.E,
-                "e_density": obs.e_density,
-                "m": obs.m,
-                "m_density": obs.m_density,
-                "init_time": obs.initialization_time,
-                "mh_time": obs.MH_evolution_time,
-                "mh_time_per_step": obs.MH_evolution_time_over_steps,
-            })
+            while i < n_repetition:
+
+                obs = backend_fn(
+                    L, L,
+                    type_id,
+                    J, h, kB, T,
+                    n_steps
+                )
+
+                writer.writerow({
+                    "backend": backend_name,
+                    "L": L,
+                    "init_type": type_name,
+                    "J": J,
+                    "h": h,
+                    "T": T,
+                    "n_steps": n_steps,
+                    "E": obs.E,
+                    "e_density": obs.e_density,
+                    "m": obs.m,
+                    "m_density": obs.m_density,
+                    "init_time": obs.initialization_time,
+                    "mh_time": obs.MH_evolution_time,
+                    "mh_time_per_step": obs.MH_evolution_time_over_steps,
+                })
+
+                i+= 1
 
 print(f"\nResults written to {csv_name}")

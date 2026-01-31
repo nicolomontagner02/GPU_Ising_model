@@ -296,8 +296,11 @@ Observables run_ising_simulation_openmp(int lattice_size_x, int lattice_size_y,
         (float)(t1 - t0) / CLOCKS_PER_SEC;
 
     /* --- Metropolis evolution timing --- */
+    int n_sweeps = (int)n_steps / lattice_size_x * lattice_size_y;
+    n_sweeps = fmax(1, n_sweeps);
+
     t0 = clock();
-    for (int step = 0; step < n_steps; step++)
+    for (int step = 0; step < n_sweeps; step++)
     {
         MH_sweep_checkerboard_openmp(lattice,
                                      lattice_size_x, lattice_size_y,

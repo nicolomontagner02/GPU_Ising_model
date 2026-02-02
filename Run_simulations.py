@@ -53,11 +53,11 @@ BACKENDS = {
 # Parameter space
 # ------------------------------------------------------------
 
-n_repetition = 10
+n_repetition = 5
 
-lattice_sizes = [128, 256, 512]      # square lattices
+lattice_sizes = [32, 210, 300, 400]      # square lattices
 J_values      = [0.0, 1.0]
-h_values      = [0.0, 0.5]
+h_values      = [0.0, 0.5, 1.0]
 T_values      = [0.5, 2.0, 10.0]
 init_types    = {
     1: "all_up",
@@ -66,7 +66,7 @@ init_types    = {
 }
 
 kB = 1.0
-n_steps = 1_000_000   # MC steps (CPU) or sweeps-derived internally
+n_steps = 100_000   # MC steps (CPU) or sweeps-derived internally
 
 # ------------------------------------------------------------
 # Output CSV

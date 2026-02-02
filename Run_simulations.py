@@ -66,7 +66,7 @@ init_types    = {
 }
 
 kB = 1.0
-n_steps = 100_000   # MC steps (CPU) or sweeps-derived internally
+n_steps = 1_000_000   # MC steps (CPU) or sweeps-derived internally
 
 # ------------------------------------------------------------
 # Output CSV

@@ -55,7 +55,7 @@ BACKENDS = {
 
 n_repetition = 5
 
-lattice_sizes = [32, 210, 300, 400]      # square lattices
+lattice_sizes = [128, 256, 512, 64, 180, 350, 460, 32, 210, 300, 400]      # square lattices
 J_values      = [0.0, 1.0]
 h_values      = [0.0, 0.5, 1.0]
 T_values      = [0.5, 2.0, 10.0]

@@ -55,7 +55,7 @@ BACKENDS = {
 
 n_repetition = 5
 
-lattice_sizes = [16, 64, 128,192, 256, 320, 384, 448, 512] #, 640, 768, 896, 1024]      # square lattices
+lattice_sizes = [16, 64, 128,192, 256, 320, 384, 448, 512, 640, 768, 896, 1024, 1536, 2048, 2560, 3072, 3548, 4096]      # square lattices
 J_values      = [1.0]
 h_values      = [0.5, 1.0, 2.0]
 T_values      = [0.5, 2.0, 10.0]
@@ -110,6 +110,9 @@ with open(csv_name, "w", newline="") as f:
             h_values,
             T_values,
         ):
+            if L > 520 and backend_name == "gpu":
+                break
+            
             print(
                 f"Backend={backend_name:14s} "
                 f"L={L:4d} "

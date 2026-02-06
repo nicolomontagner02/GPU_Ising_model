@@ -459,7 +459,7 @@ extern "C" Observables run_ising_simulation_gpu(
     out.MH_evolution_time = MH_evolution_time;
     out.MH_evolution_time_over_steps =
         MH_evolution_time /
-        ((float)n_steps * lattice_size_x * lattice_size_y);
+        ((float)n_sweeps * lattice_size_x * lattice_size_y);
 
     return out;
 }

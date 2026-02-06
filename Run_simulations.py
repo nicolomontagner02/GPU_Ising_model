@@ -37,7 +37,7 @@ def bind(fn):
     fn.restype = Observables
     return fn
 
-run_cpu        = bind(lib.run_ising_simulation)
+run_cpu       = bind(lib.run_ising_simulation)
 run_openmp    = bind(lib.run_ising_simulation_openmp)
 run_gpu       = bind(lib.run_ising_simulation_gpu)
 run_gpu_eff   = bind(lib.run_ising_simulation_efficient_gpu)
@@ -55,7 +55,7 @@ BACKENDS = {
 
 n_repetition = 15
 
-lattice_sizes = [16, 64, 128,192, 256, 320, 384, 448, 512, 640, 768,896, 1024]      # square lattices
+lattice_sizes = [16, 64, 128,192, 256, 320, 384, 448, 512, 640, 768, 896, 1024]      # square lattices
 J_values      = [1.0]
 h_values      = [0.5, 1.0, 2.0]
 T_values      = [0.5, 2.0, 10.0]

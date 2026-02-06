@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
     printf("MH evolution time (s)          : %f\n", out1.MH_evolution_time);
     printf("MH time per step (s)           : %e\n", out1.MH_evolution_time_over_steps);
 
-    // cuda part 1st
+    // cuda part 2nd
 
     printf("========================================\n");
     printf("2D Ising Model — GPU_Efficient\n");
@@ -107,8 +107,6 @@ int main(int argc, char *argv[])
     printf("Initialization time (s)        : %f\n", out3.initialization_time);
     printf("MH evolution time (s)          : %f\n", out3.MH_evolution_time);
     printf("MH time per step (s)           : %e\n", out3.MH_evolution_time_over_steps);
-
-    return 0;
 
     // cuda part 1st
 
@@ -135,4 +133,7 @@ int main(int argc, char *argv[])
     printf("Initialization time (s)        : %f\n", out2.initialization_time);
     printf("MH evolution time (s)          : %f\n", out2.MH_evolution_time);
     printf("MH time per step (s)           : %e\n", out2.MH_evolution_time_over_steps);
+
+	return 0;
+
 }

@@ -85,33 +85,7 @@ int main(int argc, char *argv[])
     // cuda part 1st
 
     printf("========================================\n");
-    printf("2D Ising Model — GPU\n");
-    printf("========================================\n");
-    printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
-    printf("Interaction J       : %.3f\n", J);
-    printf("External field h    : %.3f\n", h);
-    printf("Temperature T       : %.3f\n", T);
-    printf("# sweeps            : %d\n", n_sweeps);
-    printf("Initialization type : %s\n",
-           type == 1 ? "All up" : type == 2 ? "All down"
-                                            : "Random");
-    printf("\n");
-    printf("========================================\n");
-
-    Observables out2 = run_ising_simulation_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
-
-    printf("Energy                : %f\n", out2.E);
-    printf("Energy density        : %f\n", out2.e_density);
-    printf("Magnetization         : %f\n", out2.m);
-    printf("Magnetization density : %f\n", out2.m_density);
-    printf("Initialization time (s)        : %f\n", out2.initialization_time);
-    printf("MH evolution time (s)          : %f\n", out2.MH_evolution_time);
-    printf("MH time per step (s)           : %e\n", out2.MH_evolution_time_over_steps);
-
-    // cuda part 1st
-
-    printf("========================================\n");
-    printf("2D Ising Model — GPU\n");
+    printf("2D Ising Model — GPU_Efficient\n");
     printf("========================================\n");
     printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
     printf("Interaction J       : %.3f\n", J);
@@ -135,4 +109,30 @@ int main(int argc, char *argv[])
     printf("MH time per step (s)           : %e\n", out3.MH_evolution_time_over_steps);
 
     return 0;
+
+    // cuda part 1st
+
+    printf("========================================\n");
+    printf("2D Ising Model — GPU\n");
+    printf("========================================\n");
+    printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
+    printf("Interaction J       : %.3f\n", J);
+    printf("External field h    : %.3f\n", h);
+    printf("Temperature T       : %.3f\n", T);
+    printf("# sweeps            : %d\n", n_sweeps);
+    printf("Initialization type : %s\n",
+           type == 1 ? "All up" : type == 2 ? "All down"
+                                            : "Random");
+    printf("\n");
+    printf("========================================\n");
+
+    Observables out2 = run_ising_simulation_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
+
+    printf("Energy                : %f\n", out2.E);
+    printf("Energy density        : %f\n", out2.e_density);
+    printf("Magnetization         : %f\n", out2.m);
+    printf("Magnetization density : %f\n", out2.m_density);
+    printf("Initialization time (s)        : %f\n", out2.initialization_time);
+    printf("MH evolution time (s)          : %f\n", out2.MH_evolution_time);
+    printf("MH time per step (s)           : %e\n", out2.MH_evolution_time_over_steps);
 }

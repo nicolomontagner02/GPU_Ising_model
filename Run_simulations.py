@@ -53,15 +53,14 @@ BACKENDS = {
 # Parameter space
 # ------------------------------------------------------------
 
-n_repetition = 5
+n_repetition = 15
 
-lattice_sizes = [128, 256, 512, 64, 180, 350, 460, 32, 210, 300, 400]      # square lattices
-J_values      = [0.0, 1.0]
-h_values      = [0.0, 0.5, 1.0]
+lattice_sizes = [16, 64, 128,192, 256, 320, 384, 448, 512, 640, 768,896, 1024]      # square lattices
+J_values      = [1.0]
+h_values      = [0.5, 1.0, 2.0]
 T_values      = [0.5, 2.0, 10.0]
 init_types    = {
     1: "all_up",
-    2: "all_down",
     3: "random",
 }
 
@@ -73,7 +72,7 @@ n_steps = 100_000   # MC steps (CPU) or sweeps-derived internally
 # ------------------------------------------------------------
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-csv_name = f"results/ising_results_{timestamp}.csv"
+csv_name = f"results/ising_results_{timestamp}new.csv"
 
 csv_fields = [
     "backend",

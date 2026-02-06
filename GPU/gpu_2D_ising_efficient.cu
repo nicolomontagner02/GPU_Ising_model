@@ -166,7 +166,7 @@ __global__ void MH_1color_checkerboard_gpu_efficient(int8_t *lattice, float seed
 void MH_checkboard_sweep_gpu_efficient(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, dim3 grid, dim3 block, int sweep)
 {
 
-    // Update black sites
+   // Update black sites
     MH_1color_checkerboard_gpu_efficient<<<grid, block>>>(lattice, seed, size_x, size_y, J, h, beta, 0, sweep);
 
     // Update white sites
@@ -429,7 +429,7 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
 
     out.MH_evolution_time_over_steps =
         out.MH_evolution_time /
-        (float)(n_steps * lattice_size_x * lattice_size_y);
+        (double)(n_steps * lattice_size_x * lattice_size_y);
 
     // ============================================================
     // Measurements

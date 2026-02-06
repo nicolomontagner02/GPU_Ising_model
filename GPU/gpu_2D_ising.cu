@@ -239,11 +239,11 @@ void MH_checkboard_sweep_gpu(int *lattice, curandState *states, int size_x, int 
 
     // Update black sites
     MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, kB, T, 0);
-    cudaDeviceSynchronize();
+    // cudaDeviceSynchronize();
 
     // Update white sites
     MH_1color_checkerboard_gpu<<<grid, block>>>(lattice, states, size_x, size_y, J, h, kB, T, 1);
-    cudaDeviceSynchronize();
+    // cudaDeviceSynchronize();
 }
 
 // Magnetization

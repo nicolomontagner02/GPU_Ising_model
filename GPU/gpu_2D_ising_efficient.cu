@@ -379,6 +379,15 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
         // Hot start (stateless RNG)
         initialize_lattice_gpu_hot_efficient<<<grid, block>>>(
             d_lattice, seed, lattice_size_x, lattice_size_y);
+
+	// CHECK IMMEDIATELY
+    	cudaError_t err_i = cudaGetLastError();
+    	if (err_i != cudaSuccess) {
+        	printf("[GPU_EFF ERROR] Init kernel launch failed: %s\n", cudaGetErrorString(err_i));
+        	cudaFree(d_lattice);
+        	memset(&out, 0, sizeof(Observables));
+	        return out;
+
     }
 
     cudaDeviceSynchronize();
@@ -449,6 +458,12 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     // Cleanup
     // ============================================================
     cudaFree(d_lattice);
+
+    cudaDeviceSynchronize();
+    cudaError_t err_o = cudaGetLastError();
+    if (err_o != cudaSuccess) {
+        printf("[GPU_EFF] Warning during cleanup: %s\n", cudaGetErrorString(err_o));
+    }
 
     return out;
 }

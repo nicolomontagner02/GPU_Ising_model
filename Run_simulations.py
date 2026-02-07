@@ -43,9 +43,9 @@ run_gpu       = bind(lib.run_ising_simulation_gpu)
 run_gpu_eff   = bind(lib.run_ising_simulation_efficient_gpu)
 
 BACKENDS = {
-    "cpu_1": run_cpu,
-    "cpu_openmp": run_openmp,
-    "gpu": run_gpu,
+#    "cpu_1": run_cpu,
+#    "cpu_openmp": run_openmp,
+#    "gpu": run_gpu,
     "gpu_efficient": run_gpu_eff,
 }
 

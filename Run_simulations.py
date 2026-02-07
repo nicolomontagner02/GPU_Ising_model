@@ -60,7 +60,7 @@ J_values      = [1.0]
 h_values      = [0.5, 1.0, 2.0]
 T_values      = [0.5, 2.0, 10.0]
 init_types    = {
-    1: "all_up",
+    # 1: "all_up",
 #    2: "all_down",
     3: "random",
 }

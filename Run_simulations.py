@@ -37,10 +37,19 @@ def bind(fn):
     fn.restype = Observables
     return fn
 
+def bind_8bit(fn):
+    fn.argtypes = [
+        ctypes.c_int8, ctypes.c_int, ctypes.c_int,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float,
+        ctypes.c_int
+    ]
+    fn.restype = Observables
+    return fn
+
 run_cpu       = bind(lib.run_ising_simulation)
 run_openmp    = bind(lib.run_ising_simulation_openmp)
 run_gpu       = bind(lib.run_ising_simulation_gpu)
-run_gpu_eff   = bind(lib.run_ising_simulation_efficient_gpu)
+run_gpu_eff   = bind_8bit(lib.run_ising_simulation_efficient_gpu)
 
 BACKENDS = {
 #    "cpu_1": run_cpu,

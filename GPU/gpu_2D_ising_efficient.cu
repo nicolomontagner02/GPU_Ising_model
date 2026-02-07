@@ -387,7 +387,7 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
         	cudaFree(d_lattice);
         	memset(&out, 0, sizeof(Observables));
 	        return out;
-
+	}
     }
 
     cudaDeviceSynchronize();

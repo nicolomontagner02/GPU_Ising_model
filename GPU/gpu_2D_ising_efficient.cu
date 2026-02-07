@@ -20,7 +20,7 @@
 // ###############################################################
 
 // GPU kernel to initialize lattice (cold start: all spins +1 or -1)
-__global__ void initialize_lattice_gpu_cold_efficient(int *lattice, int size_x, int size_y, int sign)
+__global__ void initialize_lattice_gpu_cold_efficient(int8_t *lattice, int size_x, int size_y, int sign)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -366,13 +366,13 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     {
         // Cold start: all spins +1
         initialize_lattice_gpu_cold_efficient<<<grid, block>>>(
-            (int *)d_lattice, lattice_size_x, lattice_size_y, -1);
+            d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else if (type == 1)
     {
         // Cold start: all spins -1
         initialize_lattice_gpu_cold_efficient<<<grid, block>>>(
-            (int *)d_lattice, lattice_size_x, lattice_size_y, -1);
+            d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else
     {
@@ -380,14 +380,15 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
         initialize_lattice_gpu_hot_efficient<<<grid, block>>>(
             d_lattice, seed, lattice_size_x, lattice_size_y);
 
-	// CHECK IMMEDIATELY
-    	cudaError_t err_i = cudaGetLastError();
-    	if (err_i != cudaSuccess) {
-        	printf("[GPU_EFF ERROR] Init kernel launch failed: %s\n", cudaGetErrorString(err_i));
-        	cudaFree(d_lattice);
-        	memset(&out, 0, sizeof(Observables));
-	        return out;
-	}
+        // CHECK IMMEDIATELY
+        cudaError_t err_i = cudaGetLastError();
+        if (err_i != cudaSuccess)
+        {
+            printf("[GPU_EFF ERROR] Init kernel launch failed: %s\n", cudaGetErrorString(err_i));
+            cudaFree(d_lattice);
+            memset(&out, 0, sizeof(Observables));
+            return out;
+        }
     }
 
     cudaDeviceSynchronize();
@@ -461,7 +462,8 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
 
     cudaDeviceSynchronize();
     cudaError_t err_o = cudaGetLastError();
-    if (err_o != cudaSuccess) {
+    if (err_o != cudaSuccess)
+    {
         printf("[GPU_EFF] Warning during cleanup: %s\n", cudaGetErrorString(err_o));
     }
 

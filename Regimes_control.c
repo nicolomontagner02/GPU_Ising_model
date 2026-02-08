@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
     int T_span[] = {1, 100};
     float J_s = 0.0;
     float J_e = 5.0;
-    int J_n = 3;
+    int J_n = 100;
     float J_span[J_n];
 
     float dJ = (J_e - J_s) / (J_n - 1);
@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
 
     float h_s = 0.0;
     float h_e = 5.0;
-    int h_n = 3;
+    int h_n = 100;
     float h_span[h_n];
 
     float dh = (h_e - h_s) / (h_n - 1);
@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
 
             // Store magnetization data to file
             char filename[256];
-            snprintf(filename, sizeof(filename), "data/magnetization_T%.3f_type%d.csv", T, type);
+            snprintf(filename, sizeof(filename), "data/magnetization%i_%i_T%.3f_type%d.csv", lattice_size_x, lattice_size_y, T, type);
             FILE *file = fopen(filename, "w");
             if (file == NULL)
             {

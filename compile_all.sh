@@ -46,6 +46,7 @@ fi
 
 echo "=== Compiling merged simulation ==="
 gcc -O${OLEVEL} -c Ising_simulations.c -o Ising_simulations.o
+gcc -O${OLEVEL} -c Regimes_control.c -o Regimes_control.o
 
 # ---------------------------------------------------------
 # Link everything
@@ -63,3 +64,14 @@ g++ Ising_simulations.o \
     -fopenmp \
     -lm \
     -o Ising_simulations
+
+g++ Regimes_control.o \
+    Single_CPU/single_cpu_2D_ising.o \
+    OpenMP/multiple_cpu_openMP_2D_ising.o \
+    GPU/gpu_2D_ising.o \
+    GPU/gpu_2D_ising_efficient.o \
+    -L/usr/local/cuda/lib64 \
+    -lcudart \
+    -fopenmp \
+    -lm \
+    -o Regimes_control

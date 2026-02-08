@@ -122,9 +122,7 @@ int magnetisation_2D(int **lattice, int size_x, int size_y)
     return magnetisation;
 }
 
-float d_energy_2D(int **lattice, int i, int j,
-                  int size_x, int size_y,
-                  float J, float h)
+float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y, float J, float h)
 {
     int spin = lattice[i][j];
     float sum_nn = 0.0f;

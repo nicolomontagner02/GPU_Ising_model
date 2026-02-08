@@ -327,6 +327,35 @@ void print_lattice_gpu_efficient(const int8_t *lattice, int size_x, int size_y)
     }
 }
 
+void save_lattice(const char *folder, int8_t *lattice, int type, int size_x, int size_y, float J, float h, float T, int mc_steps)
+{
+    char filename[512];
+
+    snprintf(filename, sizeof(filename),
+             "%s/ising_J%.3f_h%.3f_T%.3f_Lx%d_Ly%d_MC%d_type%d.dat",
+             folder, J, h, T, size_x, size_y, mc_steps, type);
+
+    FILE *fp = fopen(filename, "w");
+    if (fp == NULL)
+    {
+        perror("Error opening file for lattice save");
+        return;
+    }
+
+    for (int i = 0; i < size_y; i++)
+    {
+        for (int j = 0; j < size_x; j++)
+        {
+            fprintf(fp, "%d ", lattice[i * size_x + j]);
+        }
+        fprintf(fp, "\n");
+    }
+
+    fclose(fp);
+
+    printf("Lattice saved to %s\n", filename);
+}
+
 extern "C" Observables run_ising_simulation_efficient_gpu(
     int lattice_size_x,
     int lattice_size_y,
@@ -454,6 +483,165 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     out.e_density = E / (float)N;
     out.m = (float)M;
     out.m_density = (float)M / (float)N;
+
+    // ============================================================
+    // Cleanup
+    // ============================================================
+    cudaFree(d_lattice);
+
+    cudaDeviceSynchronize();
+    cudaError_t err_o = cudaGetLastError();
+    if (err_o != cudaSuccess)
+    {
+        printf("[GPU_EFF] Warning during cleanup: %s\n", cudaGetErrorString(err_o));
+    }
+
+    return out;
+}
+
+extern "C" Observables run_ising_simulation_efficient_gpu_save(
+    int lattice_size_x,
+    int lattice_size_y,
+    int type,
+    float J, float h,
+    float kB, float T,
+    int n_steps, int save_lattice_flag, const char *save_folder)
+{
+    Observables out;
+
+    const int N = lattice_size_x * lattice_size_y;
+    const size_t lattice_bytes = N * sizeof(int8_t);
+
+    const float beta = 1.0f / (kB * T);
+    const unsigned long long seed =
+        (unsigned long long)time(NULL);
+
+    dim3 block(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+    dim3 grid(
+        (lattice_size_x + block.x - 1) / block.x,
+        (lattice_size_y + block.y - 1) / block.y);
+
+    // ============================================================
+    // Device allocation
+    // ============================================================
+    int8_t *d_lattice = nullptr;
+    cudaMalloc(&d_lattice, lattice_bytes);
+
+    cudaDeviceSynchronize();
+
+    // ============================================================
+    // Initialization
+    // ============================================================
+    clock_t t0 = clock();
+
+    if (type == 0)
+    {
+        // Cold start: all spins +1
+        initialize_lattice_gpu_cold_efficient<<<grid, block>>>(
+            d_lattice, lattice_size_x, lattice_size_y, -1);
+    }
+    else if (type == 1)
+    {
+        // Cold start: all spins -1
+        initialize_lattice_gpu_cold_efficient<<<grid, block>>>(
+            d_lattice, lattice_size_x, lattice_size_y, -1);
+    }
+    else
+    {
+        // Hot start (stateless RNG)
+        initialize_lattice_gpu_hot_efficient<<<grid, block>>>(
+            d_lattice, seed, lattice_size_x, lattice_size_y);
+
+        // CHECK IMMEDIATELY
+        cudaError_t err_i = cudaGetLastError();
+        if (err_i != cudaSuccess)
+        {
+            printf("[GPU_EFF ERROR] Init kernel launch failed: %s\n", cudaGetErrorString(err_i));
+            cudaFree(d_lattice);
+            memset(&out, 0, sizeof(Observables));
+            return out;
+        }
+    }
+
+    cudaDeviceSynchronize();
+
+    clock_t t1 = clock();
+    out.initialization_time =
+        (float)(t1 - t0) / CLOCKS_PER_SEC;
+
+    if (save_lattice_flag == 1)
+    {
+        std::vector<int8_t> h_lattice(N);
+        cudaMemcpy(h_lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
+
+        save_lattice(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y, J, h, T, 0);
+    }
+
+    // ============================================================
+    // Optional sanity check (only for hot start)
+    // ============================================================
+    if (type == 3)
+    {
+        bool ok = check_hot_lattice_randomness(
+            d_lattice, lattice_size_x, lattice_size_y);
+
+        if (!ok)
+        {
+            printf("[ERROR] Hot lattice failed randomness check\n");
+        }
+    }
+
+    // ============================================================
+    // Metropolis–Hastings evolution
+    // ============================================================
+    int n_sweeps = (int)n_steps / lattice_size_x / lattice_size_y;
+    n_sweeps = fmax(1, n_sweeps);
+
+    t0 = clock();
+
+    for (int sweep = 0; sweep < n_sweeps; ++sweep)
+    {
+        MH_checkboard_sweep_gpu_efficient(
+            d_lattice,
+            seed,
+            lattice_size_x,
+            lattice_size_y,
+            J, h, beta,
+            grid, block,
+            sweep);
+    }
+
+    cudaDeviceSynchronize();
+
+    t1 = clock();
+    out.MH_evolution_time =
+        (float)(t1 - t0) / CLOCKS_PER_SEC;
+
+    out.MH_evolution_time_over_steps =
+        out.MH_evolution_time /
+        (double)(n_sweeps * lattice_size_x * lattice_size_y);
+
+    // ============================================================
+    // Measurements
+    // ============================================================
+    float E = energy_2D_gpu_efficient(
+        d_lattice, lattice_size_x, lattice_size_y, J, h);
+
+    int M = magnetization_2D_gpu_efficient(
+        d_lattice, lattice_size_x, lattice_size_y);
+
+    out.E = E;
+    out.e_density = E / (float)N;
+    out.m = (float)M;
+    out.m_density = (float)M / (float)N;
+
+    if (save_lattice_flag == 1)
+    {
+        std::vector<int8_t> h_lattice(N);
+        cudaMemcpy(h_lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
+
+        save_lattice(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y, J, h, T, n_steps);
+    }
 
     // ============================================================
     // Cleanup

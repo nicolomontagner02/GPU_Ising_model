@@ -42,8 +42,8 @@ int main(int argc, char *argv[])
         J_span[i] = J_s + i * dJ;
     }
 
-    float h_s = 0.0;
-    float h_e = 3.0;
+    float h_s = -1.0;
+    float h_e = 1.0;
     int h_n = 50;
     float h_span[h_n];
 

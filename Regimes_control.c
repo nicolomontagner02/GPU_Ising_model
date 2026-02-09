@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
     int T_span[] = {1, 100};
     float J_s = 0.0;
     float J_e = 5.0;
-    int J_n = 100;
+    int J_n = 20;
     float J_span[J_n];
 
     float dJ = (J_e - J_s) / (J_n - 1);
@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
 
     float h_s = 0.0;
     float h_e = 5.0;
-    int h_n = 100;
+    int h_n = 20;
     float h_span[h_n];
 
     float dh = (h_e - h_s) / (h_n - 1);
@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
         h_span[i] = h_s + i * dh;
     }
 
-    for (int ty = 1; ty < 4; ty++)
+    for (int ty = 1; ty < 4; ty += 2)
     {
         int type = ty; // 1 for all spin up, 2 for all spin down, 3 for random initialization of the lattice
 

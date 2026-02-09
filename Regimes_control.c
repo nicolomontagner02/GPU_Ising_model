@@ -22,6 +22,9 @@ int main(int argc, char *argv[])
     int lattice_size_x = atoi(argv[1]);
     int lattice_size_y = atoi(argv[2]);
 
+    int save = 0;
+    int count = 0;
+
     float kB = 1.0;
     int n_steps = 10000000;
     int n_sweeps = (int)(n_steps / lattice_size_x / lattice_size_y);
@@ -29,8 +32,8 @@ int main(int argc, char *argv[])
 
     int T_span[] = {1, 100};
     float J_s = 0.0;
-    float J_e = 5.0;
-    int J_n = 20;
+    float J_e = 3.0;
+    int J_n = 50;
     float J_span[J_n];
 
     float dJ = (J_e - J_s) / (J_n - 1);
@@ -40,8 +43,8 @@ int main(int argc, char *argv[])
     }
 
     float h_s = 0.0;
-    float h_e = 5.0;
-    int h_n = 20;
+    float h_e = 3.0;
+    int h_n = 50;
     float h_span[h_n];
 
     float dh = (h_e - h_s) / (h_n - 1);
@@ -67,8 +70,18 @@ int main(int argc, char *argv[])
                 {
                     float h = h_span[h_i];
                     printf("Running simulation with T=%.3f, J=%.3f, h=%.3f, type=%d\n", T, J, h, type);
-                    Observables out = run_ising_simulation_efficient_gpu_save(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps, 1, "data");
+
+		    if (count %7 == 0){
+			save = 1;
+                        count = 0;
+		    }
+
+                    Observables out = run_ising_simulation_efficient_gpu_save(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps, save, "data");
                     magnetization[j][h_i] = out.m_density;
+
+		    count++;
+		    save = 0;
+
                 }
             }
 

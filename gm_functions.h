@@ -1,5 +1,5 @@
-#ifndef FUNCTIONS_CUDA_EFFICIENT_H
-#define FUNCTIONS_CUDA_EFFICIENT_H
+#ifndef FUNCTIONS_CUDA_EFF_MEMORY_H
+#define FUNCTIONS_CUDA_EFF_MEMORY_H
 
 #include "s_functions.h"
 
@@ -34,4 +34,4 @@ extern "C"
 }
 #endif
 
-#endif /* FUNCTIONS_CUDA_EFFICIENT_H */
+#endif /* FUNCTIONS_CUDA_EFF_MEMORY_H */

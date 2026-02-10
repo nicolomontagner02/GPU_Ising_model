@@ -16,7 +16,7 @@
 #define DEBUG 1
 
 // GPU kernel to initialize lattice (cold start: all spins +1 or -1)
-__global__ void initialize_lattice_gpu_cold_efficient(int8_t *lattice, int size_x, int size_y, int sign)
+__global__ void initialize_lattice_gpu_cold_eff_memory(int8_t *lattice, int size_x, int size_y, int sign)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -36,7 +36,7 @@ __device__ __forceinline__ float rng_uniform_stateless(
     return curand_uniform(&state);
 }
 
-__global__ void initialize_lattice_gpu_hot_efficient(int8_t *lattice, unsigned long long seed, int size_x, int size_y)
+__global__ void initialize_lattice_gpu_hot_eff_memory(int8_t *lattice, unsigned long long seed, int size_x, int size_y)
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -57,7 +57,7 @@ __global__ void initialize_lattice_gpu_hot_efficient(int8_t *lattice, unsigned l
 // #######################################################################################################
 
 // Evaluate energy
-__global__ void energy_2D_kernel_gpu_efficient(const int8_t *lattice, float *energy_partial, int size_x, int size_y, float J, float h)
+__global__ void energy_2D_kernel_gpu_eff_memory(const int8_t *lattice, float *energy_partial, int size_x, int size_y, float J, float h)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int N = size_x * size_y;
@@ -81,7 +81,7 @@ __global__ void energy_2D_kernel_gpu_efficient(const int8_t *lattice, float *ene
     }
 }
 
-float energy_2D_gpu_efficient(int8_t *d_lattice, int size_x, int size_y, float J, float h)
+float energy_2D_gpu_eff_memory(int8_t *d_lattice, int size_x, int size_y, float J, float h)
 {
     size_t N = size_x * size_y;
     size_t bytes = N * sizeof(float);
@@ -92,7 +92,7 @@ float energy_2D_gpu_efficient(int8_t *d_lattice, int size_x, int size_y, float J
     int threads = THREADS_PER_BLOCK;
     int blocks = (N + threads - 1) / threads;
 
-    energy_2D_kernel_gpu_efficient<<<blocks, threads>>>(d_lattice, d_energy, size_x, size_y, J, h);
+    energy_2D_kernel_gpu_eff_memory<<<blocks, threads>>>(d_lattice, d_energy, size_x, size_y, J, h);
     cudaDeviceSynchronize();
 
     std::vector<float> h_energy(N);
@@ -106,7 +106,7 @@ float energy_2D_gpu_efficient(int8_t *d_lattice, int size_x, int size_y, float J
     return energy;
 }
 
-__device__ __forceinline__ float d_energy_2D_gpu_efficient(const int8_t *lattice, int idx, int size_x, int size_y, float J, float h)
+__device__ __forceinline__ float d_energy_2D_gpu_eff_memory(const int8_t *lattice, int idx, int size_x, int size_y, float J, float h)
 {
     int spin = lattice[idx];
 
@@ -130,7 +130,7 @@ __device__ __forceinline__ float d_energy_2D_gpu_efficient(const int8_t *lattice
     return 2.0f * spin * (J * sum_nn + h);
 }
 
-__global__ void MH_1color_checkerboard_gpu_efficient(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, int color, int sweep)
+__global__ void MH_1color_checkerboard_gpu_eff_memory(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, int color, int sweep)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int N = size_x * size_y;
@@ -147,7 +147,7 @@ __global__ void MH_1color_checkerboard_gpu_efficient(int8_t *lattice, unsigned l
         // Load spin once to reduce memory transactions
         int8_t spin = lattice[i];
 
-        float dE = d_energy_2D_gpu_efficient(lattice, i, size_x, size_y, J, h);
+        float dE = d_energy_2D_gpu_eff_memory(lattice, i, size_x, size_y, J, h);
 
         if (dE <= 0.0f)
         {
@@ -166,20 +166,20 @@ __global__ void MH_1color_checkerboard_gpu_efficient(int8_t *lattice, unsigned l
     }
 }
 
-void MH_checkboard_sweep_gpu_efficient(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, int sweep)
+void MH_checkboard_sweep_gpu_eff_memory(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, int sweep)
 {
     int N = size_x * size_y;
     int threads = THREADS_PER_BLOCK;
     int blocks = (N + threads - 1) / threads;
 
     // Update black sites
-    MH_1color_checkerboard_gpu_efficient<<<blocks, threads>>>(lattice, seed, size_x, size_y, J, h, beta, 0, sweep);
+    MH_1color_checkerboard_gpu_eff_memory<<<blocks, threads>>>(lattice, seed, size_x, size_y, J, h, beta, 0, sweep);
 
     // Update white sites
-    MH_1color_checkerboard_gpu_efficient<<<blocks, threads>>>(lattice, seed, size_x, size_y, J, h, beta, 1, sweep);
+    MH_1color_checkerboard_gpu_eff_memory<<<blocks, threads>>>(lattice, seed, size_x, size_y, J, h, beta, 1, sweep);
 }
 
-__global__ void magnetization_2D_kernel_gpu_efficient(
+__global__ void magnetization_2D_kernel_gpu_eff_memory(
     const int8_t *lattice,
     int *magnetization,
     int N)
@@ -231,9 +231,9 @@ __global__ void magnetization_2D_kernel_gpu_efficient(
         atomicAdd(magnetization, sdata[0]);
 }
 
-int magnetization_2D_gpu_efficient(int8_t *d_lattice,
-                                   int size_x,
-                                   int size_y)
+int magnetization_2D_gpu_eff_memory(int8_t *d_lattice,
+                                    int size_x,
+                                    int size_y)
 {
     int N = size_x * size_y;
 
@@ -244,7 +244,7 @@ int magnetization_2D_gpu_efficient(int8_t *d_lattice,
     int threads = THREADS_PER_BLOCK;
     int blocks = (N + threads - 1) / threads;
 
-    magnetization_2D_kernel_gpu_efficient<<<blocks, threads, threads * sizeof(int)>>>(
+    magnetization_2D_kernel_gpu_eff_memory<<<blocks, threads, threads * sizeof(int)>>>(
         d_lattice, d_mag, N);
 
     int h_mag;
@@ -339,7 +339,7 @@ bool check_hot_lattice_randomness(
 // ###############################################################
 
 // Print lattice (host)
-void print_lattice_gpu_efficient(const int8_t *lattice, int size_x, int size_y)
+void print_lattice_gpu_eff_memory(const int8_t *lattice, int size_x, int size_y)
 {
     for (int i = 0; i < size_y; i++)
     {
@@ -380,7 +380,7 @@ void save_lattice(const char *folder, int8_t *lattice, int type, int size_x, int
     printf("Lattice saved to %s\n", filename);
 }
 
-extern "C" Observables run_ising_simulation_efficient_gpu(
+extern "C" Observables run_ising_simulation_eff_memory_gpu(
     int lattice_size_x,
     int lattice_size_y,
     int type,
@@ -416,19 +416,19 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     if (type == 0)
     {
         // Cold start: all spins +1
-        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(
+        initialize_lattice_gpu_cold_eff_memory<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, +1);
     }
     else if (type == 1)
     {
         // Cold start: all spins -1
-        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(
+        initialize_lattice_gpu_cold_eff_memory<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else
     {
         // Hot start (stateless RNG)
-        initialize_lattice_gpu_hot_efficient<<<blocks, threads>>>(
+        initialize_lattice_gpu_hot_eff_memory<<<blocks, threads>>>(
             d_lattice, seed, lattice_size_x, lattice_size_y);
 
         // CHECK IMMEDIATELY
@@ -472,7 +472,7 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
 
     for (int sweep = 0; sweep < n_sweeps; ++sweep)
     {
-        MH_checkboard_sweep_gpu_efficient(
+        MH_checkboard_sweep_gpu_eff_memory(
             d_lattice,
             seed,
             lattice_size_x,
@@ -494,10 +494,10 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     // ============================================================
     // Measurements
     // ============================================================
-    float E = energy_2D_gpu_efficient(
+    float E = energy_2D_gpu_eff_memory(
         d_lattice, lattice_size_x, lattice_size_y, J, h);
 
-    int M = magnetization_2D_gpu_efficient(
+    int M = magnetization_2D_gpu_eff_memory(
         d_lattice, lattice_size_x, lattice_size_y);
 
     out.E = E;
@@ -520,7 +520,7 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     return out;
 }
 
-extern "C" Observables run_ising_simulation_efficient_gpu_save(
+extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
     int lattice_size_x,
     int lattice_size_y,
     int type,
@@ -556,19 +556,19 @@ extern "C" Observables run_ising_simulation_efficient_gpu_save(
     if (type == 0)
     {
         // Cold start: all spins +1
-        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(
+        initialize_lattice_gpu_cold_eff_memory<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, +1);
     }
     else if (type == 1)
     {
         // Cold start: all spins -1
-        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(
+        initialize_lattice_gpu_cold_eff_memory<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else
     {
         // Hot start (stateless RNG)
-        initialize_lattice_gpu_hot_efficient<<<blocks, threads>>>(
+        initialize_lattice_gpu_hot_eff_memory<<<blocks, threads>>>(
             d_lattice, seed, lattice_size_x, lattice_size_y);
 
         // CHECK IMMEDIATELY
@@ -620,7 +620,7 @@ extern "C" Observables run_ising_simulation_efficient_gpu_save(
 
     for (int sweep = 0; sweep < n_sweeps; ++sweep)
     {
-        MH_checkboard_sweep_gpu_efficient(
+        MH_checkboard_sweep_gpu_eff_memory(
             d_lattice,
             seed,
             lattice_size_x,
@@ -642,10 +642,10 @@ extern "C" Observables run_ising_simulation_efficient_gpu_save(
     // ============================================================
     // Measurements
     // ============================================================
-    float E = energy_2D_gpu_efficient(
+    float E = energy_2D_gpu_eff_memory(
         d_lattice, lattice_size_x, lattice_size_y, J, h);
 
-    int M = magnetization_2D_gpu_efficient(
+    int M = magnetization_2D_gpu_eff_memory(
         d_lattice, lattice_size_x, lattice_size_y);
 
     out.E = E;
@@ -715,12 +715,12 @@ int main(int argc, char *argv[])
     if (initialization == 0)
     {
         // Cold initialization of the lattice
-        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(d_lattice, lattice_size_x, lattice_size_y, -1);
+        initialize_lattice_gpu_cold_eff_memory<<<blocks, threads>>>(d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else if (initialization == 1)
     {
         // Hot initialization of the lattice
-        initialize_lattice_gpu_hot_efficient<<<blocks, threads>>>(d_lattice, seed, lattice_size_x, lattice_size_y);
+        initialize_lattice_gpu_hot_eff_memory<<<blocks, threads>>>(d_lattice, seed, lattice_size_x, lattice_size_y);
 
         bool is_random = check_hot_lattice_randomness(d_lattice, lattice_size_x, lattice_size_y);
 
@@ -749,7 +749,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    float energy = energy_2D_gpu_efficient(d_lattice, lattice_size_x, lattice_size_y, J, h);
+    float energy = energy_2D_gpu_eff_memory(d_lattice, lattice_size_x, lattice_size_y, J, h);
 
     std::vector<int8_t> lattice(N, 0);
 
@@ -758,11 +758,11 @@ int main(int argc, char *argv[])
     printf("\nLattice after GPU initialization:\n");
     int print_x = min(PRINT_UP_TO, (int)lattice_size_x);
     int print_y = min(PRINT_UP_TO, (int)lattice_size_y);
-    print_lattice_gpu_efficient(lattice.data(), print_x, print_y);
+    print_lattice_gpu_eff_memory(lattice.data(), print_x, print_y);
 
     printf("Energy: %f\n", energy);
 
-    int M = magnetization_2D_gpu_efficient(d_lattice, lattice_size_x, lattice_size_y);
+    int M = magnetization_2D_gpu_eff_memory(d_lattice, lattice_size_x, lattice_size_y);
 
     printf("Magnetization: %d\n", M);
 
@@ -770,7 +770,7 @@ int main(int argc, char *argv[])
 
     while (i < 10)
     {
-        MH_checkboard_sweep_gpu_efficient(d_lattice, seed, lattice_size_x, lattice_size_y, J, h, beta, i);
+        MH_checkboard_sweep_gpu_eff_memory(d_lattice, seed, lattice_size_x, lattice_size_y, J, h, beta, i);
 
         if (DEBUG)
         {
@@ -783,13 +783,13 @@ int main(int argc, char *argv[])
     cudaMemcpy(lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
     printf("\nLattice after GPU MH evolution:\n");
-    print_lattice_gpu_efficient(lattice.data(), print_x, print_y);
+    print_lattice_gpu_eff_memory(lattice.data(), print_x, print_y);
 
-    energy = energy_2D_gpu_efficient(d_lattice, lattice_size_x, lattice_size_y, J, h);
+    energy = energy_2D_gpu_eff_memory(d_lattice, lattice_size_x, lattice_size_y, J, h);
 
     printf("Energy: %f\n", energy);
 
-    M = magnetization_2D_gpu_efficient(d_lattice, lattice_size_x, lattice_size_y);
+    M = magnetization_2D_gpu_eff_memory(d_lattice, lattice_size_x, lattice_size_y);
 
     printf("Magnetization: %d\n", M);
 

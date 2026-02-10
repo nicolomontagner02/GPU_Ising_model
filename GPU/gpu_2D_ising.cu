@@ -350,8 +350,7 @@ extern "C" Observables run_ising_simulation_gpu(
     cudaMalloc(&d_lattice, lattice_bytes);
     cudaMalloc(&d_rng_states, N * sizeof(curandState));
 
-    unsigned long long seed =
-        (unsigned long long)time(NULL);
+    unsigned long long seed = 1234;
 
     /* RNG initialization */
     init_rng_states<<<grid, block>>>(

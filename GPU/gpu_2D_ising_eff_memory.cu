@@ -307,7 +307,7 @@ bool check_hot_lattice_randomness_m(
     int threads = THREADS_PER_BLOCK;
     int blocks = (N + threads - 1) / threads;
 
-    hot_lattice_sanity_kernel<<<blocks, threads>>>(
+    hot_lattice_sanity_kernel_m<<<blocks, threads>>>(
         d_lattice, size_x, size_y,
         d_M, d_S, d_C);
 
@@ -601,7 +601,7 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
     // ============================================================
     if (type == 3)
     {
-        bool ok = check_hot_lattice_randomness(
+        bool ok = check_hot_lattice_randomness_m(
             d_lattice, lattice_size_x, lattice_size_y);
 
         if (!ok)
@@ -722,7 +722,7 @@ int main(int argc, char *argv[])
         // Hot initialization of the lattice
         initialize_lattice_gpu_hot_eff_memory<<<blocks, threads>>>(d_lattice, seed, lattice_size_x, lattice_size_y);
 
-        bool is_random = check_hot_lattice_randomness(d_lattice, lattice_size_x, lattice_size_y);
+        bool is_random = check_hot_lattice_randomness_m(d_lattice, lattice_size_x, lattice_size_y);
 
         cudaDeviceSynchronize();
 

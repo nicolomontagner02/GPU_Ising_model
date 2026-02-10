@@ -356,7 +356,7 @@ void save_lattice(const char *folder, int8_t *lattice, int type, int size_x, int
     printf("Lattice saved to %s\n", filename);
 }
 
-extern "C" Observables run_ising_simulation_efficient_gpu(
+extern "C" Observables run_ising_simulation_eff_memory_gpu(
     int lattice_size_x,
     int lattice_size_y,
     int type,
@@ -499,7 +499,7 @@ extern "C" Observables run_ising_simulation_efficient_gpu(
     return out;
 }
 
-extern "C" Observables run_ising_simulation_efficient_gpu_save(
+extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
     int lattice_size_x,
     int lattice_size_y,
     int type,

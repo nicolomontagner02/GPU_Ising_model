@@ -38,6 +38,10 @@ if [ "$BUILD_ALL" = "1" ]; then
     echo "=== Compiling efficient GPU code ==="
     nvcc -O${OLEVEL} -c GPU/gpu_2D_ising_efficient.cu \
         -o GPU/gpu_2D_ising_efficient.o
+
+    echo "=== Compiling efficient memory GPU code ==="
+    nvcc -O${OLEVEL} -c GPU/gpu_2D_ising_eff_memory.cu \
+        -o GPU/gpu_2D_ising_eff_memory.o
 fi
 
 # ---------------------------------------------------------
@@ -59,6 +63,7 @@ g++ Ising_simulations.o \
     OpenMP/multiple_cpu_openMP_2D_ising.o \
     GPU/gpu_2D_ising.o \
     GPU/gpu_2D_ising_efficient.o \
+    GPU/gpu_2D_ising_eff_memory.o\
     -L/usr/local/cuda/lib64 \
     -lcudart \
     -fopenmp \
@@ -70,6 +75,7 @@ g++ Regimes_control.o \
     OpenMP/multiple_cpu_openMP_2D_ising.o \
     GPU/gpu_2D_ising.o \
     GPU/gpu_2D_ising_efficient.o \
+    GPU/gpu_2D_ising_eff_memory.o\
     -L/usr/local/cuda/lib64 \
     -lcudart \
     -fopenmp \

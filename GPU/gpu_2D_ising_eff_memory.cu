@@ -27,7 +27,7 @@ __global__ void initialize_lattice_gpu_cold_eff_memory(int8_t *lattice, int size
     }
 }
 
-__device__ __forceinline__ float rng_uniform_stateless(
+__device__ __forceinline__ float rng_uniform_stateless_m(
     unsigned long long seed,
     unsigned long long counter)
 {
@@ -47,7 +47,7 @@ __global__ void initialize_lattice_gpu_hot_eff_memory(int8_t *lattice, unsigned 
 
         unsigned long counter = (unsigned long long)(size_x * size_y) + idx;
 
-        float r = rng_uniform_stateless(seed, counter);
+        float r = rng_uniform_stateless_m(seed, counter);
         lattice[idx] = (r < 0.5f) ? -1 : 1;
     }
 }
@@ -157,7 +157,7 @@ __global__ void MH_1color_checkerboard_gpu_eff_memory(int8_t *lattice, unsigned 
         {
             unsigned long long counter = sweep * (unsigned long long)(size_x * size_y) * 2 + color * (unsigned long long)(size_x * size_y) + i;
 
-            float u = rng_uniform_stateless(seed, counter);
+            float u = rng_uniform_stateless_m(seed, counter);
             if (u < __expf(-dE * beta))
             {
                 lattice[i] = -spin;
@@ -257,7 +257,7 @@ int magnetization_2D_gpu_eff_memory(int8_t *d_lattice,
 // ###############################################################
 // Sanity check of the hot initialized lattice
 
-__global__ void hot_lattice_sanity_kernel(
+__global__ void hot_lattice_sanity_kernel_m(
     const int8_t *lattice,
     int size_x,
     int size_y,
@@ -288,7 +288,7 @@ __global__ void hot_lattice_sanity_kernel(
     atomicAdd(nn_corr_sum, corr);
 }
 
-bool check_hot_lattice_randomness(
+bool check_hot_lattice_randomness_m(
     const int8_t *d_lattice,
     int size_x,
     int size_y)
@@ -351,7 +351,7 @@ void print_lattice_gpu_eff_memory(const int8_t *lattice, int size_x, int size_y)
     }
 }
 
-void save_lattice(const char *folder, int8_t *lattice, int type, int size_x, int size_y, float J, float h, float T, int mc_steps)
+void save_lattice_m(const char *folder, int8_t *lattice, int type, int size_x, int size_y, float J, float h, float T, int mc_steps)
 {
     char filename[512];
 
@@ -453,7 +453,7 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu(
     // ============================================================
     if (type == 3)
     {
-        bool ok = check_hot_lattice_randomness(
+        bool ok = check_hot_lattice_randomness_m(
             d_lattice, lattice_size_x, lattice_size_y);
 
         if (!ok)
@@ -593,7 +593,7 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
         std::vector<int8_t> h_lattice(N);
         cudaMemcpy(h_lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
-        save_lattice(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y, J, h, T, 0);
+        save_lattice_m(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y, J, h, T, 0);
     }
 
     // ============================================================
@@ -658,7 +658,7 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
         std::vector<int8_t> h_lattice(N);
         cudaMemcpy(h_lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
 
-        save_lattice(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y, J, h, T, n_steps);
+        save_lattice_m(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y, J, h, T, n_steps);
     }
 
     // ============================================================

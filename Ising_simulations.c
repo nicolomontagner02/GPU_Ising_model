@@ -125,15 +125,15 @@ int main(int argc, char *argv[])
     printf("\n");
     printf("========================================\n");
 
-    Observables out3 = run_ising_simulation_eff_memory_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
+    Observables out4 = run_ising_simulation_eff_memory_gpu(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
 
-    printf("Energy                : %f\n", out3.E);
-    printf("Energy density        : %f\n", out3.e_density);
-    printf("Magnetization         : %f\n", out3.m);
-    printf("Magnetization density : %f\n", out3.m_density);
-    printf("Initialization time (s)        : %f\n", out3.initialization_time);
-    printf("MH evolution time (s)          : %f\n", out3.MH_evolution_time);
-    printf("MH time per step (s)           : %e\n", out3.MH_evolution_time_over_steps);
+    printf("Energy                : %f\n", out4.E);
+    printf("Energy density        : %f\n", out4.e_density);
+    printf("Magnetization         : %f\n", out4.m);
+    printf("Magnetization density : %f\n", out4.m_density);
+    printf("Initialization time (s)        : %f\n", out4.initialization_time);
+    printf("MH evolution time (s)          : %f\n", out4.MH_evolution_time);
+    printf("MH time per step (s)           : %e\n", out4.MH_evolution_time_over_steps);
 
     // cuda part 1st
 

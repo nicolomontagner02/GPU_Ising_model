@@ -9,8 +9,7 @@
 #include "../s_functions.h"
 #include "../g_functions.h"
 
-#define THREADS_PER_BLOCK_X 16
-#define THREADS_PER_BLOCK_Y 16
+#define THREADS_PER_BLOCK 256
 #define PRINT_UP_TO 10
 
 #define DEBUG 1
@@ -22,12 +21,12 @@
 // GPU kernel to initialize lattice (cold start: all spins +1 or -1)
 __global__ void initialize_lattice_gpu_cold_efficient(int8_t *lattice, int size_x, int size_y, int sign)
 {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = size_x * size_y;
 
-    if (row < size_y && col < size_x)
+    if (idx < N)
     {
-        lattice[row * size_x + col] = sign;
+        lattice[idx] = sign;
     }
 }
 
@@ -42,13 +41,11 @@ __device__ __forceinline__ float rng_uniform_stateless(
 
 __global__ void initialize_lattice_gpu_hot_efficient(int8_t *lattice, unsigned long long seed, int size_x, int size_y)
 {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = size_x * size_y;
 
-    if (row < size_y && col < size_x)
+    if (idx < N)
     {
-        int idx = row * size_x + col;
-
         unsigned long counter = (unsigned long long)(size_x * size_y) + idx;
 
         float r = rng_uniform_stateless(seed, counter);
@@ -63,18 +60,18 @@ __global__ void initialize_lattice_gpu_hot_efficient(int8_t *lattice, unsigned l
 // Evaluate energy
 __global__ void energy_2D_kernel_gpu_efficient(const int8_t *lattice, float *energy_partial, int size_x, int size_y, float J, float h)
 {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = size_x * size_y;
 
-    if (row < size_y && col < size_x)
+    if (idx < N)
     {
-
-        int idx = row * size_x + col;
+        int row = idx / size_x;
+        int col = idx % size_x;
 
         int spin = lattice[idx];
 
-        int right = lattice[(col + 1) % size_x + row * size_x];
-        int down = lattice[col + (row + 1) % size_y * size_x];
+        int right = lattice[row * size_x + (col + 1) % size_x];
+        int down = lattice[((row + 1) % size_y) * size_x + col];
 
         float e = 0.0f;
         e -= J * spin * (right + down);
@@ -92,12 +89,10 @@ float energy_2D_gpu_efficient(int8_t *d_lattice, int size_x, int size_y, float J
     float *d_energy = nullptr;
     cudaMalloc(&d_energy, bytes);
 
-    dim3 block(8, 8);
-    dim3 grid(
-        (size_x + block.x - 1) / block.x,
-        (size_y + block.y - 1) / block.y);
+    int threads = 256;
+    int blocks = (N + threads - 1) / threads;
 
-    energy_2D_kernel_gpu_efficient<<<grid, block>>>(d_lattice, d_energy, size_x, size_y, J, h);
+    energy_2D_kernel_gpu_efficient<<<blocks, threads>>>(d_lattice, d_energy, size_x, size_y, J, h);
     cudaDeviceSynchronize();
 
     std::vector<float> h_energy(N);
@@ -133,17 +128,17 @@ __device__ __forceinline__ float d_energy_2D_gpu_efficient(const int8_t *lattice
 
 __global__ void MH_1color_checkerboard_gpu_efficient(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, int color, int sweep)
 {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = size_x * size_y;
 
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (row >= size_y || col >= size_x)
+    if (idx >= N)
         return;
+
+    int row = idx / size_x;
+    int col = idx % size_x;
 
     if (((row + col) & 1) != color)
         return;
-
-    int idx = row * size_x + col;
 
     float dE = d_energy_2D_gpu_efficient(lattice, row, col, size_x, size_y, J, h);
 
@@ -163,14 +158,14 @@ __global__ void MH_1color_checkerboard_gpu_efficient(int8_t *lattice, unsigned l
     }
 }
 
-void MH_checkboard_sweep_gpu_efficient(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, dim3 grid, dim3 block, int sweep)
+void MH_checkboard_sweep_gpu_efficient(int8_t *lattice, unsigned long long seed, int size_x, int size_y, float J, float h, float beta, int blocks, int threads, int sweep)
 {
 
     // Update black sites
-    MH_1color_checkerboard_gpu_efficient<<<grid, block>>>(lattice, seed, size_x, size_y, J, h, beta, 0, sweep);
+    MH_1color_checkerboard_gpu_efficient<<<blocks, threads>>>(lattice, seed, size_x, size_y, J, h, beta, 0, sweep);
 
     // Update white sites
-    MH_1color_checkerboard_gpu_efficient<<<grid, block>>>(lattice, seed, size_x, size_y, J, h, beta, 1, sweep);
+    MH_1color_checkerboard_gpu_efficient<<<blocks, threads>>>(lattice, seed, size_x, size_y, J, h, beta, 1, sweep);
 }
 
 __global__ void magnetization_2D_kernel_gpu_efficient(
@@ -356,7 +351,7 @@ void save_lattice(const char *folder, int8_t *lattice, int type, int size_x, int
     printf("Lattice saved to %s\n", filename);
 }
 
-extern "C" Observables run_ising_simulation_eff_memory_gpu(
+extern "C" Observables run_ising_simulation_efficient_gpu(
     int lattice_size_x,
     int lattice_size_y,
     int type,
@@ -373,10 +368,8 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu(
     const unsigned long long seed =
         (unsigned long long)time(NULL);
 
-    dim3 block(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-    dim3 grid(
-        (lattice_size_x + block.x - 1) / block.x,
-        (lattice_size_y + block.y - 1) / block.y);
+    int threads = THREADS_PER_BLOCK;
+    int blocks = (N + threads - 1) / threads;
 
     // ============================================================
     // Device allocation
@@ -394,19 +387,19 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu(
     if (type == 0)
     {
         // Cold start: all spins +1
-        initialize_lattice_gpu_cold_efficient<<<grid, block>>>(
+        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, +1);
     }
     else if (type == 1)
     {
         // Cold start: all spins -1
-        initialize_lattice_gpu_cold_efficient<<<grid, block>>>(
+        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else
     {
         // Hot start (stateless RNG)
-        initialize_lattice_gpu_hot_efficient<<<grid, block>>>(
+        initialize_lattice_gpu_hot_efficient<<<blocks, threads>>>(
             d_lattice, seed, lattice_size_x, lattice_size_y);
 
         // CHECK IMMEDIATELY
@@ -456,7 +449,7 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu(
             lattice_size_x,
             lattice_size_y,
             J, h, beta,
-            grid, block,
+            blocks, threads,
             sweep);
     }
 
@@ -499,7 +492,7 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu(
     return out;
 }
 
-extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
+extern "C" Observables run_ising_simulation_efficient_gpu_save(
     int lattice_size_x,
     int lattice_size_y,
     int type,
@@ -516,10 +509,8 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
     const unsigned long long seed =
         (unsigned long long)time(NULL);
 
-    dim3 block(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-    dim3 grid(
-        (lattice_size_x + block.x - 1) / block.x,
-        (lattice_size_y + block.y - 1) / block.y);
+    int threads = THREADS_PER_BLOCK;
+    int blocks = (N + threads - 1) / threads;
 
     // ============================================================
     // Device allocation
@@ -537,19 +528,19 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
     if (type == 0)
     {
         // Cold start: all spins +1
-        initialize_lattice_gpu_cold_efficient<<<grid, block>>>(
+        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else if (type == 1)
     {
         // Cold start: all spins -1
-        initialize_lattice_gpu_cold_efficient<<<grid, block>>>(
+        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else
     {
         // Hot start (stateless RNG)
-        initialize_lattice_gpu_hot_efficient<<<grid, block>>>(
+        initialize_lattice_gpu_hot_efficient<<<blocks, threads>>>(
             d_lattice, seed, lattice_size_x, lattice_size_y);
 
         // CHECK IMMEDIATELY
@@ -607,7 +598,7 @@ extern "C" Observables run_ising_simulation_eff_memory_gpu_save(
             lattice_size_x,
             lattice_size_y,
             J, h, beta,
-            grid, block,
+            blocks, threads,
             sweep);
     }
 
@@ -687,10 +678,8 @@ int main(int argc, char *argv[])
     int8_t *d_lattice = nullptr;
     cudaMalloc(&d_lattice, lattice_bytes);
 
-    dim3 block(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-    dim3 grid(
-        (lattice_size_x + block.x - 1) / block.x,
-        (lattice_size_y + block.y - 1) / block.y);
+    int threads = THREADS_PER_BLOCK;
+    int blocks = (N + threads - 1) / threads;
 
     // curandState *d_rng_states = nullptr;
     // cudaMalloc(&d_rng_states, N * sizeof(curandState));
@@ -740,12 +729,12 @@ int main(int argc, char *argv[])
     if (initialization == 0)
     {
         // Cold initialization of the lattice
-        initialize_lattice_gpu_cold<<<grid, block>>>(d_lattice, lattice_size_x, lattice_size_y, -1);
+        initialize_lattice_gpu_cold_efficient<<<blocks, threads>>>(d_lattice, lattice_size_x, lattice_size_y, -1);
     }
     else if (initialization == 1)
     {
         // Hot initialization of the lattice
-        initialize_lattice_gpu_hot_counter<<<grid, block>>>(d_lattice, seed, lattice_size_x, lattice_size_y);
+        initialize_lattice_gpu_hot_efficient<<<blocks, threads>>>(d_lattice, seed, lattice_size_x, lattice_size_y);
         //
 
         bool is_random = check_hot_lattice_randomness(d_lattice, lattice_size_x, lattice_size_y);
@@ -796,7 +785,7 @@ int main(int argc, char *argv[])
 
     while (i < 10)
     {
-        MH_checkboard_sweep_gpu_efficient(d_lattice, seed, lattice_size_x, lattice_size_y, J, h, beta, grid, block, i);
+        MH_checkboard_sweep_gpu_efficient(d_lattice, seed, lattice_size_x, lattice_size_y, J, h, beta, blocks, threads, i);
 
         // int tile_size = 128; // tune for Nano
         // MH_checkboard_sweep_gpu_tiled(d_lattice, d_rng_states, lattice_size_x, lattice_size_y, J, h, beta, tile_size, tile_size, block);

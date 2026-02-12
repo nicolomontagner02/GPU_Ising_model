@@ -26,7 +26,7 @@
 
 #define THREADS_PER_BLOCK 256
 #define PRINT_UP_TO 10
-#define DEBUG 1
+#define DEBUG 0
 
 // ============================================================
 // GPU KERNEL: Lattice Initialization (Cold Start)

@@ -637,6 +637,64 @@ AnnealingResult simulated_annealing(int lattice_size_x, int lattice_size_y,
     return result;
 }
 
+void save_annealing_trajectory(const char *filename, AnnealingResult *result)
+{
+    FILE *fp = fopen(filename, "w");
+    if (fp == NULL)
+    {
+        perror("Error opening file for annealing trajectory save");
+        return;
+    }
+
+    fprintf(fp, "# Temperature Energy EnergyDensity Magnetization MagnetizationDensity\n");
+
+    for (int i = 0; i < result->n_temp_points; i++)
+    {
+        fprintf(fp, "%.6f %.6f %.6f %.6f %.6f\n",
+                result->temperatures[i],
+                result->energies[i],
+                result->energy_densities[i],
+                result->magnetizations[i],
+                result->magnetization_densities[i]);
+    }
+
+    fclose(fp);
+    printf("Annealing trajectory saved to %s\n", filename);
+}
+
+void free_annealing_result(AnnealingResult *result)
+{
+    if (result->temperatures != NULL)
+        free(result->temperatures);
+    if (result->energies != NULL)
+        free(result->energies);
+    if (result->energy_densities != NULL)
+        free(result->energy_densities);
+    if (result->magnetizations != NULL)
+        free(result->magnetizations);
+    if (result->magnetization_densities != NULL)
+        free(result->magnetization_densities);
+}
+
+int annealing(int lattice_size_x, int lattice_size_y, int type, float J, float h, float kB, float T_initial, float T_final, float tau, int steps_per_temp, int temp_update_interval, int save_trajectory)
+{
+
+    AnnealingResult result = simulated_annealing(
+        lattice_size_x, lattice_size_y, type,
+        J, h, kB,
+        T_initial, T_final, tau,
+        steps_per_temp, temp_update_interval,
+        save_trajectory);
+
+    // Save trajectory to file
+    save_annealing_trajectory("annealing_trajectory.dat", &result);
+
+    // Free memory
+    free_annealing_result(&result);
+
+    return 0;
+}
+
 #ifdef STANDALONE_BUILD
 int main(int argc, char *argv[])
 {

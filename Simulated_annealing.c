@@ -17,11 +17,10 @@ int main(int argc, char *argv[])
     // Parse command line arguments
     int run_cpu = 1;
     int run_gpu = 1;
-    int run_gpu_snapshots = 0;
 
     // Simulation parameters
-    int lattice_size_x = 64;
-    int lattice_size_y = 64;
+    int lattice_size_x = 1000;
+    int lattice_size_y = 1000;
     int type = 2; // random initialization
 
     float J = 1.0;

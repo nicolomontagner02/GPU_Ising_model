@@ -1,5 +1,5 @@
-#ifndef FUNCTIONS_CUDA_2DBLOCK_H
-#define FUNCTIONS_CUDA_2DBLOCK_H
+#ifndef FUNCTIONS_CUDA_2D_BLOCK_H
+#define FUNCTIONS_CUDA_2D_BLOCK_H
 
 #include "s_functions.h"
 

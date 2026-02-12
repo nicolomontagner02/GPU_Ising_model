@@ -1204,7 +1204,7 @@ extern "C" AnnealingResultGPU simulated_annealing_gpu_with_snapshots(
     return result;
 }
 
-int annealing_gpu(int lattice_size_x, int lattice_size_y, int type,
+extern "C" int annealing_gpu(int lattice_size_x, int lattice_size_y, int type,
                   float J, float h, float kB,
                   float T_initial, float T_final, float tau,
                   int sweeps_per_temp, int temp_update_interval,

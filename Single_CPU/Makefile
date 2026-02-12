@@ -1,6 +1,6 @@
 CC=nvcc
 
-CFLAGS= -g -O0
+CFLAGS= -g -O0 
 
 # Assume all .c files correspond to a program to build.
 TARGETS=$(patsubst %.c,%,$(wildcard *.c))

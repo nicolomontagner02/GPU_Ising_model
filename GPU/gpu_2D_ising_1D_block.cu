@@ -462,7 +462,7 @@ void save_lattice_1D_block(const char *folder, int8_t *lattice, int type, int si
 // ============================================================
 
 // Run Ising simulation and return observables
-extern "C" Observables run_ising_simulation_gpu_1D_block(
+extern "C" Observables run_ising_simulation_1D_block_gpu(
     int lattice_size_x,
     int lattice_size_y,
     int type,
@@ -618,7 +618,7 @@ extern "C" Observables run_ising_simulation_gpu_1D_block(
 // ============================================================
 
 // Run Ising simulation with optional lattice saving
-extern "C" Observables run_ising_simulation_gpu_1D_block_save(
+extern "C" Observables run_ising_simulation_1D_block_gpu_save(
     int lattice_size_x,
     int lattice_size_y,
     int type,

@@ -776,20 +776,6 @@ typedef struct
  * GPU-accelerated simulated annealing with exponential temperature decay
  *
  * T(t) = T_initial * exp(-t/tau)
- *
- * @param lattice_size_x: lattice dimension in x
- * @param lattice_size_y: lattice dimension in y
- * @param type: initialization type (0=all +1, 1=all -1, 2/3=random)
- * @param J: interaction strength
- * @param h: external magnetic field
- * @param kB: Boltzmann constant
- * @param T_initial: starting temperature
- * @param T_final: final temperature (stopping criterion)
- * @param tau: decay time constant (controls cooling rate)
- * @param sweeps_per_temp: number of MC sweeps at each temperature
- * @param temp_update_interval: how often to update temperature (in sweeps)
- * @param save_trajectory: if 1, save observables at each temperature point
- * @return: AnnealingResultGPU containing final state and optional trajectory
  */
 extern "C" AnnealingResultGPU simulated_annealing_gpu(
     int lattice_size_x, int lattice_size_y,
@@ -1205,10 +1191,10 @@ extern "C" AnnealingResultGPU simulated_annealing_gpu_with_snapshots(
 }
 
 extern "C" int annealing_gpu(int lattice_size_x, int lattice_size_y, int type,
-                  float J, float h, float kB,
-                  float T_initial, float T_final, float tau,
-                  int sweeps_per_temp, int temp_update_interval,
-                  int save_trajectory)
+                             float J, float h, float kB,
+                             float T_initial, float T_final, float tau,
+                             int sweeps_per_temp, int temp_update_interval,
+                             int save_trajectory)
 {
     AnnealingResultGPU result = simulated_annealing_gpu(
         lattice_size_x, lattice_size_y, type,

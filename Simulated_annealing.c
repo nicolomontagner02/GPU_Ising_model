@@ -31,9 +31,10 @@ int main(int argc, char *argv[])
     float T_final = 0.5;
     float tau = 5000.0; // decay time constant
 
-    int steps_per_temp_cpu = 100;   // CPU: MC steps at each temperature
-    int sweeps_per_temp_gpu = 10;   // GPU: MC sweeps at each temperature
-    int temp_update_interval = 100; // Update temperature interval
+    int steps_per_temp_cpu = 100;      // CPU: MC steps at each temperature
+    int sweeps_per_temp_gpu = 11;      // GPU: MC sweeps at each temperature
+    int temp_update_interval = 100;    // Update temperature interval
+    int temp_update_interval_gpu = 10; // GPU: Update temperature interval
     int save_trajectory = 1;
 
     printf("========================================\n");
@@ -91,7 +92,7 @@ int main(int argc, char *argv[])
             lattice_size_x, lattice_size_y, type,
             J, h, kB,
             T_initial, T_final, tau,
-            sweeps_per_temp_gpu, temp_update_interval,
+            sweeps_per_temp_gpu, temp_update_interval_gpu,
             save_trajectory);
 
         clock_t gpu_end = clock();

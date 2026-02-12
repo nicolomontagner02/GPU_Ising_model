@@ -13,7 +13,7 @@ OLEVEL=$2
 BUILD_ALL=$1
 
 if [ -z "$OLEVEL" ]; then
-    echo "Usage: $0 <O-level> [build_all]"
+    echo "Usage: $0 [build_all] <O-level>"
     exit 1
 fi
 
@@ -35,13 +35,14 @@ if [ "$BUILD_ALL" = "1" ]; then
     nvcc -O${OLEVEL} -c GPU/gpu_2D_ising.cu \
         -o GPU/gpu_2D_ising.o
 
-    echo "=== Compiling efficient GPU code ==="
-    nvcc -O${OLEVEL} -c GPU/gpu_2D_ising_efficient.cu \
-        -o GPU/gpu_2D_ising_efficient.o
-
     echo "=== Compiling efficient memory GPU code ==="
-    nvcc -O${OLEVEL} -c GPU/gpu_2D_ising_eff_memory.cu \
-        -o GPU/gpu_2D_ising_eff_memory.o
+    nvcc -O${OLEVEL} -c GPU/gpu_2D_ising_1D_block.cu \
+        -o GPU/gpu_2D_ising_1D_block.o
+
+    echo "=== Compiling efficient GPU code ==="
+    nvcc -O${OLEVEL} -c GPU/gpu_2D_ising_2D_block.cu \
+        -o GPU/gpu_2D_ising_2D_block.o
+
 fi
 
 # ---------------------------------------------------------
@@ -62,8 +63,8 @@ g++ Ising_simulations.o \
     Single_CPU/single_cpu_2D_ising.o \
     OpenMP/multiple_cpu_openMP_2D_ising.o \
     GPU/gpu_2D_ising.o \
-    GPU/gpu_2D_ising_efficient.o \
-    GPU/gpu_2D_ising_eff_memory.o\
+    GPU/gpu_2D_ising_1D_block.o \
+    GPU/gpu_2D_ising_2D_block.o\
     -L/usr/local/cuda/lib64 \
     -lcudart \
     -fopenmp \
@@ -74,8 +75,8 @@ g++ Regimes_control.o \
     Single_CPU/single_cpu_2D_ising.o \
     OpenMP/multiple_cpu_openMP_2D_ising.o \
     GPU/gpu_2D_ising.o \
-    GPU/gpu_2D_ising_efficient.o \
-    GPU/gpu_2D_ising_eff_memory.o\
+    GPU/gpu_2D_ising_1D_block.o \
+    GPU/gpu_2D_ising_2D_block.o\
     -L/usr/local/cuda/lib64 \
     -lcudart \
     -fopenmp \

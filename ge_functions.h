@@ -1,5 +1,5 @@
-#ifndef FUNCTIONS_CUDA_EFFICIENT_H
-#define FUNCTIONS_CUDA_EFFICIENT_H
+#ifndef FUNCTIONS_CUDA_2DBLOCK_H
+#define FUNCTIONS_CUDA_2DBLOCK_H
 
 #include "s_functions.h"
 
@@ -8,7 +8,7 @@ extern "C"
 {
 #endif
 
-    Observables run_ising_simulation_efficient_gpu(
+    Observables run_ising_simulation_2Dblock_gpu(
         int lattice_size_x,
         int lattice_size_y,
         int type,
@@ -18,7 +18,7 @@ extern "C"
         float T,
         int n_steps);
 
-    Observables run_ising_simulation_efficient_gpu_save(
+    Observables run_ising_simulation_2Dblock_gpu_save(
         int lattice_size_x,
         int lattice_size_y,
         int type,
@@ -34,4 +34,4 @@ extern "C"
 }
 #endif
 
-#endif /* FUNCTIONS_CUDA_EFFICIENT_H */
+#endif /* FUNCTIONS_CUDA_2DBLOCK_H */

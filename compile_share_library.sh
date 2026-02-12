@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # ---------------------------------------------------------
 # SHARED LIBRARY COMPILATION FILE (Python importable)
 # ---------------------------------------------------------
@@ -43,12 +41,12 @@ if [ "$BUILD_ALL" = "1" ]; then
         -o build/gpu_2D_ising.o
 
     echo "=== Compiling efficient GPU code ==="
-    nvcc -O${OLEVEL} -Xcompiler -fPIC -c GPU/gpu_2D_ising_efficient.cu \
-        -o build/gpu_2D_ising_efficient.o
+    nvcc -O${OLEVEL} -Xcompiler -fPIC -c GPU/gpu_2D_ising_1D_block.cu \
+        -o build/gpu_2D_ising_1D_block.o
 
     echo "=== Compiling efficient 1Dthreads GPU code ==="
-    nvcc -O${OLEVEL} -Xcompiler -fPIC -c GPU/gpu_2D_ising_eff_memory.cu \
-        -o build/gpu_2D_ising_eff_memory.o
+    nvcc -O${OLEVEL} -Xcompiler -fPIC -c GPU/gpu_2D_ising_2D_block.cu \
+        -o build/gpu_2D_ising_2D_block.o
 fi
 
 # ---------------------------------------------------------
@@ -70,8 +68,8 @@ g++ -shared \
     build/single_cpu_2D_ising.o \
     build/multiple_cpu_openMP_2D_ising.o \
     build/gpu_2D_ising.o \
-    build/gpu_2D_ising_efficient.o \
-    build/gpu_2D_ising_eff_memory.o\
+    build/gpu_2D_ising_1D_block.o \
+    build/gpu_2D_ising_2D_block.o\
     -L/usr/local/cuda/lib64 \
     -lcudart \
     -fopenmp \

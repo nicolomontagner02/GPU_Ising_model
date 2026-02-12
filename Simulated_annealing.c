@@ -21,6 +21,7 @@ int main(int argc, char *argv[])
     // Simulation parameters
     int lattice_size_x = 1000;
     int lattice_size_y = 1000;
+    int N = lattice_size_x * lattice_size_y;
     int type = 3;
     int type_gpu = 2; // random initialization
 
@@ -30,12 +31,18 @@ int main(int argc, char *argv[])
 
     float T_initial = 10.0;
     float T_final = 0.5;
-    float tau = 5000.0; // decay time constant
 
-    int steps_per_temp_cpu = 100;      // CPU: MC steps at each temperature
-    int sweeps_per_temp_gpu = 11;      // GPU: MC sweeps at each temperature
-    int temp_update_interval = 100;    // Update temperature interval
-    int temp_update_interval_gpu = 10; // GPU: Update temperature interval
+    int sweeps_per_temp = 1;
+
+    int steps_per_temp_cpu = sweeps_per_temp * N; // 1,000,000
+    int sweeps_per_temp_gpu = sweeps_per_temp;    // 1
+
+    float tau_sweeps = 500.0;       // Fewer sweeps needed
+    float tau_cpu = tau_sweeps * N; // 500,000,000
+    float tau_gpu = tau_sweeps;     // 500
+
+    int temp_update_interval_cpu = 1;
+    int temp_update_interval_gpu = 1;
     int save_trajectory = 1;
 
     printf("========================================\n");
@@ -44,7 +51,7 @@ int main(int argc, char *argv[])
     printf("Lattice size    : %d x %d\n", lattice_size_x, lattice_size_y);
     printf("T_initial       : %.3f\n", T_initial);
     printf("T_final         : %.3f\n", T_final);
-    printf("Decay tau       : %.3f\n", tau);
+    printf("Decay tau       : %.3f\n", tau_cpu);
     printf("Initialization  : %s\n",
            type == 0 ? "All +1" : type == 1 ? "All -1"
                                             : "Random");
@@ -62,8 +69,8 @@ int main(int argc, char *argv[])
         int result_cpu = annealing(
             lattice_size_x, lattice_size_y, type,
             J, h, kB,
-            T_initial, T_final, tau,
-            steps_per_temp_cpu, temp_update_interval,
+            T_initial, T_final, tau_cpu,
+            steps_per_temp_cpu, temp_update_interval_cpu,
             save_trajectory);
 
         clock_t cpu_end = clock();
@@ -92,7 +99,7 @@ int main(int argc, char *argv[])
         int result_gpu = annealing_gpu(
             lattice_size_x, lattice_size_y, type_gpu,
             J, h, kB,
-            T_initial, T_final, tau,
+            T_initial, T_final, tau_gpu,
             sweeps_per_temp_gpu, temp_update_interval_gpu,
             save_trajectory);
 

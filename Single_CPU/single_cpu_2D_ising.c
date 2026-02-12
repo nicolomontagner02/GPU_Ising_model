@@ -472,6 +472,216 @@ Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
     return out;
 }
 
+// Simulated annealing function
+
+typedef struct
+{
+    float *temperatures;
+    float *energies;
+    float *energy_densities;
+    float *magnetizations;
+    float *magnetization_densities;
+    int n_temp_points;
+} AnnealingResult;
+
+/**
+ * Simulated annealing with exponential temperature decay
+ *
+ * T(t) = T_initial * exp(-t/tau)
+ */
+
+AnnealingResult simulated_annealing(int lattice_size_x, int lattice_size_y,
+                                    int type,
+                                    float J, float h, float kB,
+                                    float T_initial, float T_final, float tau,
+                                    int steps_per_temp, int temp_update_interval,
+                                    int save_trajectory)
+{
+    printf("========================================\n");
+    printf("Simulated Annealing — 2D Ising Model\n");
+    printf("========================================\n");
+    printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
+    printf("T_initial           : %.3f\n", T_initial);
+    printf("T_final             : %.3f\n", T_final);
+    printf("Decay constant tau  : %.3f\n", tau);
+    printf("Steps per temp      : %d\n", steps_per_temp);
+    printf("Temp update interval: %d\n", temp_update_interval);
+    printf("\n");
+
+    // Initialize lattice
+    int **lattice = initialize_lattice(lattice_size_x, lattice_size_y, type);
+
+    // Calculate number of temperature points
+    int max_steps = (int)(-tau * log(T_final / T_initial));
+    int n_temp_points = max_steps / temp_update_interval + 1;
+
+    // Allocate arrays for trajectory if needed
+    float *temperatures = NULL;
+    float *energies = NULL;
+    float *energy_densities = NULL;
+    float *magnetizations = NULL;
+    float *magnetization_densities = NULL;
+
+    if (save_trajectory)
+    {
+        temperatures = (float *)malloc(n_temp_points * sizeof(float));
+        energies = (float *)malloc(n_temp_points * sizeof(float));
+        energy_densities = (float *)malloc(n_temp_points * sizeof(float));
+        magnetizations = (float *)malloc(n_temp_points * sizeof(float));
+        magnetization_densities = (float *)malloc(n_temp_points * sizeof(float));
+    }
+
+    float T = T_initial;
+    int total_steps = 0;
+    int trajectory_index = 0;
+
+    printf("Starting annealing...\n");
+
+    // Main annealing loop
+    while (T > T_final)
+    {
+        // Perform MC steps at current temperature
+        for (int i = 0; i < steps_per_temp; i++)
+        {
+            MH_step(lattice, lattice_size_x, lattice_size_y, J, h, kB, T);
+        }
+
+        total_steps += steps_per_temp;
+
+        // Save current state if tracking trajectory
+        if (save_trajectory && trajectory_index < n_temp_points)
+        {
+            float E = energy_2D(lattice, lattice_size_x, lattice_size_y, J, h);
+            float e_density = energy_density_2D(E, lattice_size_x, lattice_size_y);
+            float m = magnetisation_2D(lattice, lattice_size_x, lattice_size_y);
+            int N = lattice_size_x * lattice_size_y;
+
+            temperatures[trajectory_index] = T;
+            energies[trajectory_index] = E;
+            energy_densities[trajectory_index] = e_density;
+            magnetizations[trajectory_index] = m;
+            magnetization_densities[trajectory_index] = (float)m / (float)N;
+
+            trajectory_index++;
+        }
+
+        // Update temperature using exponential decay
+        T = T_initial * exp(-total_steps / tau);
+
+        // Print progress every 10 temperature updates
+        if (trajectory_index % 10 == 0)
+        {
+            printf("Step %d: T = %.4f\n", total_steps, T);
+        }
+    }
+
+    printf("\nAnnealing complete after %d total MC steps\n", total_steps);
+
+    // Final measurements
+    float E_final = energy_2D(lattice, lattice_size_x, lattice_size_y, J, h);
+    float e_density_final = energy_density_2D(E_final, lattice_size_x, lattice_size_y);
+    float m_final = magnetisation_2D(lattice, lattice_size_x, lattice_size_y);
+    int N = lattice_size_x * lattice_size_y;
+
+    printf("\nFinal State:\n");
+    printf("Temperature         : %.4f\n", T);
+    printf("Energy              : %.4f\n", E_final);
+    printf("Energy density      : %.4f\n", e_density_final);
+    printf("Magnetization       : %.4f\n", m_final);
+    printf("Magnetization/spin  : %.4f\n", (float)m_final / (float)N);
+
+    // Cleanup lattice
+    for (int i = 0; i < lattice_size_x; i++)
+    {
+        free(lattice[i]);
+    }
+    free(lattice);
+
+    // Prepare result
+    AnnealingResult result;
+    result.temperatures = temperatures;
+    result.energies = energies;
+    result.energy_densities = energy_densities;
+    result.magnetizations = magnetizations;
+    result.magnetization_densities = magnetization_densities;
+    result.n_temp_points = trajectory_index;
+
+    return result;
+}
+
+void save_annealing_trajectory(const char *filename, AnnealingResult *result)
+{
+    FILE *fp = fopen(filename, "w");
+    if (fp == NULL)
+    {
+        perror("Error opening file for annealing trajectory save");
+        return;
+    }
+
+    fprintf(fp, "# Temperature Energy EnergyDensity Magnetization MagnetizationDensity\n");
+
+    for (int i = 0; i < result->n_temp_points; i++)
+    {
+        fprintf(fp, "%.6f %.6f %.6f %.6f %.6f\n",
+                result->temperatures[i],
+                result->energies[i],
+                result->energy_densities[i],
+                result->magnetizations[i],
+                result->magnetization_densities[i]);
+    }
+
+    fclose(fp);
+    printf("Annealing trajectory saved to %s\n", filename);
+}
+
+void free_annealing_result(AnnealingResult *result)
+{
+    if (result->temperatures != NULL)
+        free(result->temperatures);
+    if (result->energies != NULL)
+        free(result->energies);
+    if (result->energy_densities != NULL)
+        free(result->energy_densities);
+    if (result->magnetizations != NULL)
+        free(result->magnetizations);
+    if (result->magnetization_densities != NULL)
+        free(result->magnetization_densities);
+}
+
+int annealing()
+{
+    int lattice_size_x = 500;
+    int lattice_size_y = 500;
+    int type = 3; // random initialization
+
+    float J = 1.0;
+    float h = 0.0; // no external field for annealing
+    float kB = 1.0;
+
+    float T_initial = 10.0; // High temperature
+    float T_final = 0.1;    // Low temperature
+    float tau = 5000.0;     // Decay time constant (control parameter)
+
+    int steps_per_temp = 100;       // MC steps at each temperature
+    int temp_update_interval = 100; // Update temperature every 100 steps
+    int save_trajectory = 1;        // Save the trajectory
+
+    AnnealingResult result = simulated_annealing(
+        lattice_size_x, lattice_size_y, type,
+        J, h, kB,
+        T_initial, T_final, tau,
+        steps_per_temp, temp_update_interval,
+        save_trajectory);
+
+    // Save trajectory to file
+    save_annealing_trajectory("annealing_trajectory.dat", &result);
+
+    // Free memory
+    free_annealing_result(&result);
+
+    return 0;
+}
+
 #ifdef STANDALONE_BUILD
 int main(int argc, char *argv[])
 {
@@ -529,6 +739,9 @@ int main(int argc, char *argv[])
 
     if (DEBUG)
         printf("[CHECKPOINT] main() complete\n");
+
+    annealing();
+
     return 0;
 }
 #endif

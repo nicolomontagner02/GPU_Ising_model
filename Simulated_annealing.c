@@ -21,7 +21,8 @@ int main(int argc, char *argv[])
     // Simulation parameters
     int lattice_size_x = 1000;
     int lattice_size_y = 1000;
-    int type = 2; // random initialization
+    int type = 3;
+    int type_gpu = 2; // random initialization
 
     float J = 1.0;
     float h = 0.0; // no external field for annealing
@@ -89,7 +90,7 @@ int main(int argc, char *argv[])
         clock_t gpu_start = clock();
 
         int result_gpu = annealing_gpu(
-            lattice_size_x, lattice_size_y, type,
+            lattice_size_x, lattice_size_y, type_gpu,
             J, h, kB,
             T_initial, T_final, tau,
             sweeps_per_temp_gpu, temp_update_interval_gpu,

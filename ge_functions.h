@@ -8,7 +8,7 @@ extern "C"
 {
 #endif
 
-    Observables run_ising_simulation_2Dblock_gpu(
+    Observables run_ising_simulation_2D_block_gpu(
         int lattice_size_x,
         int lattice_size_y,
         int type,
@@ -18,7 +18,7 @@ extern "C"
         float T,
         int n_steps);
 
-    Observables run_ising_simulation_2Dblock_gpu_save(
+    Observables run_ising_simulation_2D_block_gpu_save(
         int lattice_size_x,
         int lattice_size_y,
         int type,

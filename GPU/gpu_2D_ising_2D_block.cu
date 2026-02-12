@@ -403,7 +403,7 @@ void save_lattice(const char *folder, int8_t *lattice, int type, int size_x, int
 // Main simulation function (without lattice saving)
 // ###############################################################
 
-extern "C" Observables run_ising_simulation_2Dblock_gpu(
+extern "C" Observables run_ising_simulation_2D_block_gpu(
     int lattice_size_x,
     int lattice_size_y,
     int type,
@@ -574,7 +574,7 @@ extern "C" Observables run_ising_simulation_2Dblock_gpu(
 // Main simulation function (with lattice saving)
 // ###############################################################
 
-extern "C" Observables run_ising_simulation_2Dblock_gpu_save(
+extern "C" Observables run_ising_simulation_2D_block_gpu_save(
     int lattice_size_x,
     int lattice_size_y,
     int type,

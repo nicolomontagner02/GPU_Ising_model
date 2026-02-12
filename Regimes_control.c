@@ -71,17 +71,17 @@ int main(int argc, char *argv[])
                     float h = h_span[h_i];
                     printf("Running simulation with T=%.3f, J=%.3f, h=%.3f, type=%d\n", T, J, h, type);
 
-		    if (count %7 == 0){
-			save = 1;
+                    if (count % 7 == 0)
+                    {
+                        save = 1;
                         count = 0;
-		    }
+                    }
 
-                    Observables out = run_ising_simulation_efficient_gpu_save(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps, save, "data");
+                    Observables out = run_ising_simulation_2D_block_gpu_save(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps, save, "data");
                     magnetization[j][h_i] = out.m_density;
 
-		    count++;
-		    save = 0;
-
+                    count++;
+                    save = 0;
                 }
             }
 

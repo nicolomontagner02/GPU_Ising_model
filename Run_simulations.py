@@ -40,8 +40,9 @@ def bind(fn):
 run_cpu       = bind(lib.run_ising_simulation)
 run_openmp    = bind(lib.run_ising_simulation_openmp)
 run_gpu       = bind(lib.run_ising_simulation_gpu)
-run_gpu_eff   = bind(lib.run_ising_simulation_efficient_gpu)
-run_gpu_1Dthreads = bind(lib.run_ising_simulation_eff_memory_gpu)
+run_gpu_1Dthreads = bind(lib.run_ising_simulation_1D_block_gpu)
+run_gpu_eff   = bind(lib.run_ising_simulation_2D_block_gpu)
+
 
 BACKENDS = {
     # "cpu_1": run_cpu,

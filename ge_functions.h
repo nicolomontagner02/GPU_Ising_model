@@ -30,6 +30,13 @@ extern "C"
         int save_lattice_flag,
         const char *save_folder);
 
+    // GPU annealing functions
+    int annealing_gpu(int lattice_size_x, int lattice_size_y, int type,
+                      float J, float h, float kB,
+                      float T_initial, float T_final, float tau,
+                      int sweeps_per_temp, int temp_update_interval,
+                      int save_trajectory);
+
 #ifdef __cplusplus
 }
 #endif

@@ -648,23 +648,8 @@ void free_annealing_result(AnnealingResult *result)
         free(result->magnetization_densities);
 }
 
-int annealing()
+int annealing(int lattice_size_x, int lattice_size_y, int type, float J, float h, float kB, float T_initial, float T_final, float tau, int steps_per_temp, int temp_update_interval, int save_trajectory)
 {
-    int lattice_size_x = 500;
-    int lattice_size_y = 500;
-    int type = 3; // random initialization
-
-    float J = 1.0;
-    float h = 0.0; // no external field for annealing
-    float kB = 1.0;
-
-    float T_initial = 10.0; // High temperature
-    float T_final = 0.1;    // Low temperature
-    float tau = 5000.0;     // Decay time constant (control parameter)
-
-    int steps_per_temp = 100;       // MC steps at each temperature
-    int temp_update_interval = 100; // Update temperature every 100 steps
-    int save_trajectory = 1;        // Save the trajectory
 
     AnnealingResult result = simulated_annealing(
         lattice_size_x, lattice_size_y, type,

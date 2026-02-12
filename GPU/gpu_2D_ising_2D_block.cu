@@ -758,6 +758,478 @@ extern "C" Observables run_ising_simulation_2D_block_gpu_save(
 }
 
 // ###############################################################
+// SIMULATED ANNEALING FOR GPU
+// ###############################################################
+
+typedef struct
+{
+    float *temperatures;
+    float *energies;
+    float *energy_densities;
+    float *magnetizations;
+    float *magnetization_densities;
+    int n_temp_points;
+    float total_time;
+} AnnealingResultGPU;
+
+/**
+ * GPU-accelerated simulated annealing with exponential temperature decay
+ *
+ * T(t) = T_initial * exp(-t/tau)
+ *
+ * @param lattice_size_x: lattice dimension in x
+ * @param lattice_size_y: lattice dimension in y
+ * @param type: initialization type (0=all +1, 1=all -1, 2/3=random)
+ * @param J: interaction strength
+ * @param h: external magnetic field
+ * @param kB: Boltzmann constant
+ * @param T_initial: starting temperature
+ * @param T_final: final temperature (stopping criterion)
+ * @param tau: decay time constant (controls cooling rate)
+ * @param sweeps_per_temp: number of MC sweeps at each temperature
+ * @param temp_update_interval: how often to update temperature (in sweeps)
+ * @param save_trajectory: if 1, save observables at each temperature point
+ * @return: AnnealingResultGPU containing final state and optional trajectory
+ */
+extern "C" AnnealingResultGPU simulated_annealing_gpu(
+    int lattice_size_x, int lattice_size_y,
+    int type,
+    float J, float h, float kB,
+    float T_initial, float T_final, float tau,
+    int sweeps_per_temp, int temp_update_interval,
+    int save_trajectory)
+{
+    printf("========================================\n");
+    printf("GPU Simulated Annealing — 2D Ising Model\n");
+    printf("========================================\n");
+    printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
+    printf("T_initial           : %.3f\n", T_initial);
+    printf("T_final             : %.3f\n", T_final);
+    printf("Decay constant tau  : %.3f\n", tau);
+    printf("Sweeps per temp     : %d\n", sweeps_per_temp);
+    printf("Temp update interval: %d\n", temp_update_interval);
+    printf("\n");
+
+    const int N = lattice_size_x * lattice_size_y;
+    const size_t lattice_bytes = N * sizeof(int8_t);
+    const unsigned long long seed = (unsigned long long)time(NULL);
+
+    // Calculate number of temperature points
+    int max_sweeps = (int)(-tau * log(T_final / T_initial) / (float)sweeps_per_temp);
+    int n_temp_points = max_sweeps / temp_update_interval + 1;
+
+    // Allocate trajectory arrays if needed
+    float *temperatures = NULL;
+    float *energies = NULL;
+    float *energy_densities = NULL;
+    float *magnetizations = NULL;
+    float *magnetization_densities = NULL;
+
+    if (save_trajectory)
+    {
+        temperatures = (float *)malloc(n_temp_points * sizeof(float));
+        energies = (float *)malloc(n_temp_points * sizeof(float));
+        energy_densities = (float *)malloc(n_temp_points * sizeof(float));
+        magnetizations = (float *)malloc(n_temp_points * sizeof(float));
+        magnetization_densities = (float *)malloc(n_temp_points * sizeof(float));
+    }
+
+    // ============================================================
+    // Device allocation and initialization
+    // ============================================================
+    int8_t *d_lattice = nullptr;
+    cudaMalloc(&d_lattice, lattice_bytes);
+
+    dim3 block(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+    dim3 grid(
+        (lattice_size_x + block.x - 1) / block.x,
+        (lattice_size_y + block.y - 1) / block.y);
+
+    // Initialize lattice
+    if (type == 0)
+    {
+        if (DEBUG)
+            printf("[CHECKPOINT] Cold initialization (all spins +1)\n");
+        initialize_lattice_gpu_cold_2Dblock<<<grid, block>>>(
+            d_lattice, lattice_size_x, lattice_size_y, +1);
+    }
+    else if (type == 1)
+    {
+        if (DEBUG)
+            printf("[CHECKPOINT] Cold initialization (all spins -1)\n");
+        initialize_lattice_gpu_cold_2Dblock<<<grid, block>>>(
+            d_lattice, lattice_size_x, lattice_size_y, -1);
+    }
+    else
+    {
+        if (DEBUG)
+            printf("[CHECKPOINT] Hot initialization (random spins)\n");
+        initialize_lattice_gpu_hot_2Dblock<<<grid, block>>>(
+            d_lattice, seed, lattice_size_x, lattice_size_y);
+    }
+
+    cudaDeviceSynchronize();
+
+    // ============================================================
+    // Annealing loop
+    // ============================================================
+    float T = T_initial;
+    int total_sweeps = 0;
+    int trajectory_index = 0;
+
+    clock_t t_start = clock();
+
+    printf("Starting GPU annealing...\n");
+
+    while (T > T_final)
+    {
+        float beta = 1.0f / (kB * T);
+
+        // Perform MC sweeps at current temperature
+        for (int sweep = 0; sweep < sweeps_per_temp; sweep++)
+        {
+            MH_checkboard_sweep_gpu_2Dblock(
+                d_lattice, seed,
+                lattice_size_x, lattice_size_y,
+                J, h, beta,
+                grid, block,
+                total_sweeps + sweep);
+        }
+
+        total_sweeps += sweeps_per_temp;
+
+        // Save current state if tracking trajectory
+        if (save_trajectory && trajectory_index < n_temp_points)
+        {
+            float E = energy_2D_gpu_2Dblock(
+                d_lattice, lattice_size_x, lattice_size_y, J, h);
+
+            int M = magnetization_2D_gpu_2Dblock(
+                d_lattice, lattice_size_x, lattice_size_y);
+
+            temperatures[trajectory_index] = T;
+            energies[trajectory_index] = E;
+            energy_densities[trajectory_index] = E / (float)N;
+            magnetizations[trajectory_index] = (float)M;
+            magnetization_densities[trajectory_index] = (float)M / (float)N;
+
+            trajectory_index++;
+        }
+
+        // Update temperature using exponential decay
+        T = T_initial * expf(-total_sweeps * sweeps_per_temp / tau);
+
+        // Print progress every 10 temperature updates
+        if (trajectory_index % 10 == 0 && trajectory_index > 0)
+        {
+            printf("Sweep %d: T = %.4f\n", total_sweeps, T);
+        }
+    }
+
+    clock_t t_end = clock();
+    float total_time = (float)(t_end - t_start) / CLOCKS_PER_SEC;
+
+    cudaDeviceSynchronize();
+
+    printf("\nAnnealing complete after %d total sweeps\n", total_sweeps);
+    printf("Total time: %.3f seconds\n", total_time);
+
+    // ============================================================
+    // Final measurements
+    // ============================================================
+    float E_final = energy_2D_gpu_2Dblock(
+        d_lattice, lattice_size_x, lattice_size_y, J, h);
+
+    int M_final = magnetization_2D_gpu_2Dblock(
+        d_lattice, lattice_size_x, lattice_size_y);
+
+    printf("\nFinal State:\n");
+    printf("Temperature         : %.4f\n", T);
+    printf("Energy              : %.4f\n", E_final);
+    printf("Energy density      : %.4f\n", E_final / (float)N);
+    printf("Magnetization       : %d\n", M_final);
+    printf("Magnetization/spin  : %.4f\n", (float)M_final / (float)N);
+
+    // ============================================================
+    // Cleanup
+    // ============================================================
+    cudaFree(d_lattice);
+
+    // Prepare result
+    AnnealingResultGPU result;
+    result.temperatures = temperatures;
+    result.energies = energies;
+    result.energy_densities = energy_densities;
+    result.magnetizations = magnetizations;
+    result.magnetization_densities = magnetization_densities;
+    result.n_temp_points = trajectory_index;
+    result.total_time = total_time;
+
+    return result;
+}
+
+// Save annealing trajectory to file
+void save_annealing_trajectory_gpu(const char *filename, AnnealingResultGPU *result)
+{
+    FILE *fp = fopen(filename, "w");
+    if (fp == NULL)
+    {
+        perror("Error opening file for annealing trajectory save");
+        return;
+    }
+
+    fprintf(fp, "# Temperature Energy EnergyDensity Magnetization MagnetizationDensity\n");
+
+    for (int i = 0; i < result->n_temp_points; i++)
+    {
+        fprintf(fp, "%.6f %.6f %.6f %.6f %.6f\n",
+                result->temperatures[i],
+                result->energies[i],
+                result->energy_densities[i],
+                result->magnetizations[i],
+                result->magnetization_densities[i]);
+    }
+
+    fclose(fp);
+    printf("Annealing trajectory saved to %s\n", filename);
+}
+
+// Free annealing result memory
+void free_annealing_result_gpu(AnnealingResultGPU *result)
+{
+    if (result->temperatures != NULL)
+        free(result->temperatures);
+    if (result->energies != NULL)
+        free(result->energies);
+    if (result->energy_densities != NULL)
+        free(result->energy_densities);
+    if (result->magnetizations != NULL)
+        free(result->magnetizations);
+    if (result->magnetization_densities != NULL)
+        free(result->magnetization_densities);
+}
+
+// ###############################################################
+// Advanced: Simulated annealing with lattice saving at key temps
+// ###############################################################
+
+extern "C" AnnealingResultGPU simulated_annealing_gpu_with_snapshots(
+    int lattice_size_x, int lattice_size_y,
+    int type,
+    float J, float h, float kB,
+    float T_initial, float T_final, float tau,
+    int sweeps_per_temp, int temp_update_interval,
+    int save_trajectory,
+    const char *save_folder,
+    int n_snapshots) // Number of lattice snapshots to save
+{
+    printf("========================================\n");
+    printf("GPU Simulated Annealing with Snapshots\n");
+    printf("========================================\n");
+    printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
+    printf("T_initial           : %.3f\n", T_initial);
+    printf("T_final             : %.3f\n", T_final);
+    printf("Decay constant tau  : %.3f\n", tau);
+    printf("Snapshots           : %d\n", n_snapshots);
+    printf("\n");
+
+    const int N = lattice_size_x * lattice_size_y;
+    const size_t lattice_bytes = N * sizeof(int8_t);
+    const unsigned long long seed = (unsigned long long)time(NULL);
+
+    // Calculate number of temperature points
+    int max_sweeps = (int)(-tau * log(T_final / T_initial) / (float)sweeps_per_temp);
+    int n_temp_points = max_sweeps / temp_update_interval + 1;
+    int snapshot_interval = (n_temp_points > n_snapshots) ? (n_temp_points / n_snapshots) : 1;
+
+    // Allocate trajectory arrays
+    float *temperatures = NULL;
+    float *energies = NULL;
+    float *energy_densities = NULL;
+    float *magnetizations = NULL;
+    float *magnetization_densities = NULL;
+
+    if (save_trajectory)
+    {
+        temperatures = (float *)malloc(n_temp_points * sizeof(float));
+        energies = (float *)malloc(n_temp_points * sizeof(float));
+        energy_densities = (float *)malloc(n_temp_points * sizeof(float));
+        magnetizations = (float *)malloc(n_temp_points * sizeof(float));
+        magnetization_densities = (float *)malloc(n_temp_points * sizeof(float));
+    }
+
+    // ============================================================
+    // Device allocation and initialization
+    // ============================================================
+    int8_t *d_lattice = nullptr;
+    cudaMalloc(&d_lattice, lattice_bytes);
+
+    dim3 block(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+    dim3 grid(
+        (lattice_size_x + block.x - 1) / block.x,
+        (lattice_size_y + block.y - 1) / block.y);
+
+    // Initialize lattice
+    if (type == 0)
+    {
+        initialize_lattice_gpu_cold_2Dblock<<<grid, block>>>(
+            d_lattice, lattice_size_x, lattice_size_y, +1);
+    }
+    else if (type == 1)
+    {
+        initialize_lattice_gpu_cold_2Dblock<<<grid, block>>>(
+            d_lattice, lattice_size_x, lattice_size_y, -1);
+    }
+    else
+    {
+        initialize_lattice_gpu_hot_2Dblock<<<grid, block>>>(
+            d_lattice, seed, lattice_size_x, lattice_size_y);
+    }
+
+    cudaDeviceSynchronize();
+
+    // Save initial lattice
+    std::vector<int8_t> h_lattice(N);
+    cudaMemcpy(h_lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
+    save_lattice(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y,
+                 J, h, T_initial, 0);
+
+    // ============================================================
+    // Annealing loop
+    // ============================================================
+    float T = T_initial;
+    int total_sweeps = 0;
+    int trajectory_index = 0;
+    int snapshot_count = 0;
+
+    clock_t t_start = clock();
+
+    printf("Starting GPU annealing with snapshots...\n");
+
+    while (T > T_final)
+    {
+        float beta = 1.0f / (kB * T);
+
+        // Perform MC sweeps at current temperature
+        for (int sweep = 0; sweep < sweeps_per_temp; sweep++)
+        {
+            MH_checkboard_sweep_gpu_2Dblock(
+                d_lattice, seed,
+                lattice_size_x, lattice_size_y,
+                J, h, beta,
+                grid, block,
+                total_sweeps + sweep);
+        }
+
+        total_sweeps += sweeps_per_temp;
+
+        // Save current state if tracking trajectory
+        if (save_trajectory && trajectory_index < n_temp_points)
+        {
+            float E = energy_2D_gpu_2Dblock(
+                d_lattice, lattice_size_x, lattice_size_y, J, h);
+
+            int M = magnetization_2D_gpu_2Dblock(
+                d_lattice, lattice_size_x, lattice_size_y);
+
+            temperatures[trajectory_index] = T;
+            energies[trajectory_index] = E;
+            energy_densities[trajectory_index] = E / (float)N;
+            magnetizations[trajectory_index] = (float)M;
+            magnetization_densities[trajectory_index] = (float)M / (float)N;
+
+            // Save lattice snapshot at intervals
+            if (trajectory_index % snapshot_interval == 0 && snapshot_count < n_snapshots)
+            {
+                cudaMemcpy(h_lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
+                save_lattice(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y,
+                             J, h, T, total_sweeps);
+                snapshot_count++;
+                printf("Snapshot %d saved at T=%.4f\n", snapshot_count, T);
+            }
+
+            trajectory_index++;
+        }
+
+        // Update temperature
+        T = T_initial * expf(-total_sweeps * sweeps_per_temp / tau);
+
+        if (trajectory_index % 10 == 0 && trajectory_index > 0)
+        {
+            printf("Sweep %d: T = %.4f\n", total_sweeps, T);
+        }
+    }
+
+    clock_t t_end = clock();
+    float total_time = (float)(t_end - t_start) / CLOCKS_PER_SEC;
+
+    cudaDeviceSynchronize();
+
+    // Save final lattice
+    cudaMemcpy(h_lattice.data(), d_lattice, lattice_bytes, cudaMemcpyDeviceToHost);
+    save_lattice(save_folder, h_lattice.data(), type, lattice_size_x, lattice_size_y,
+                 J, h, T, total_sweeps);
+
+    printf("\nAnnealing complete after %d total sweeps\n", total_sweeps);
+    printf("Total time: %.3f seconds\n", total_time);
+    printf("Snapshots saved: %d\n", snapshot_count + 1);
+
+    // Final measurements
+    float E_final = energy_2D_gpu_2Dblock(
+        d_lattice, lattice_size_x, lattice_size_y, J, h);
+
+    int M_final = magnetization_2D_gpu_2Dblock(
+        d_lattice, lattice_size_x, lattice_size_y);
+
+    printf("\nFinal State:\n");
+    printf("Temperature         : %.4f\n", T);
+    printf("Energy              : %.4f\n", E_final);
+    printf("Energy density      : %.4f\n", E_final / (float)N);
+    printf("Magnetization       : %d\n", M_final);
+    printf("Magnetization/spin  : %.4f\n", (float)M_final / (float)N);
+
+    // Cleanup
+    cudaFree(d_lattice);
+
+    // Prepare result
+    AnnealingResultGPU result;
+    result.temperatures = temperatures;
+    result.energies = energies;
+    result.energy_densities = energy_densities;
+    result.magnetizations = magnetizations;
+    result.magnetization_densities = magnetization_densities;
+    result.n_temp_points = trajectory_index;
+    result.total_time = total_time;
+
+    return result;
+}
+
+int annealing_gpu(int lattice_size_x, int lattice_size_y, int type,
+                  float J, float h, float kB,
+                  float T_initial, float T_final, float tau,
+                  int sweeps_per_temp, int temp_update_interval,
+                  int save_trajectory)
+{
+    AnnealingResultGPU result = simulated_annealing_gpu(
+        lattice_size_x, lattice_size_y, type,
+        J, h, kB,
+        T_initial, T_final, tau,
+        sweeps_per_temp, temp_update_interval,
+        save_trajectory);
+
+    // Save trajectory to file
+    if (save_trajectory)
+    {
+        save_annealing_trajectory_gpu("gpu_annealing_trajectory.dat", &result);
+    }
+
+    // Free memory
+    free_annealing_result_gpu(&result);
+
+    return 0;
+}
+
+// ###############################################################
 // MAIN (Standalone testing)
 // ###############################################################
 

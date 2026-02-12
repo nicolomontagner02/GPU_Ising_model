@@ -8,6 +8,12 @@ void report_state(const char *label, int **lattice, int size_x, int size_y, floa
 float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y, float J, float h);
 float energy_density_2D(float energy, int size_x, int size_y);
 
+int annealing(int lattice_size_x, int lattice_size_y, int type,
+              float J, float h, float kB,
+              float T_initial, float T_final, float tau,
+              int steps_per_temp, int temp_update_interval,
+              int save_trajectory);
+
 typedef struct
 {
     float E;

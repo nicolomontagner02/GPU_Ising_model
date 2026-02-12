@@ -1,3 +1,18 @@
+/*
+ * 2D Ising Model Simulation using OpenMP
+ *
+ * This program implements a 2D Ising model simulation using the Metropolis-Hastings
+ * algorithm with a checkerboard update scheme. The simulation uses OpenMP for
+ * parallelization across multiple CPU cores.
+ *
+ * Key features:
+ * - Parallel lattice initialization
+ * - Energy and magnetization calculations with reduction
+ * - Checkerboard Metropolis-Hastings sweeps for efficient updates
+ * - Performance timing and measurements
+ * - Debug mode for checkpoint verification
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -7,20 +22,11 @@
 
 #define DEBUG 0
 
-// void print_lattice(int **lattice, int size_x, int size_y){
-
-//     printf("2D Ising Lattice:\n");
-//         for (int i = 0; i < size_x; i++) {
-//             for (int j = 0; j < size_y; j++) {
-//                 printf("%d ", lattice[i][j]);
-//             }
-//             printf("\n");
-//         }
-
-// }
-
+// Initialize a 2D lattice with spins
+// type: 1 (all up), 2 (all down), 3 (random)
 int **initialize_lattice_openmp(int lattice_size_x, int lattice_size_y, int type)
 {
+    // Allocate memory for lattice pointers
     int **lattice = (int **)malloc(lattice_size_x * sizeof(int *));
     for (int i = 0; i < lattice_size_x; i++)
     {
@@ -36,7 +42,7 @@ int **initialize_lattice_openmp(int lattice_size_x, int lattice_size_y, int type
         {
             for (int j = 0; j < lattice_size_y; j++)
             {
-
+                // Initialize spins based on type
                 if (type == 1)
                 {
                     lattice[i][j] = 1;
@@ -53,45 +59,52 @@ int **initialize_lattice_openmp(int lattice_size_x, int lattice_size_y, int type
         }
     }
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Lattice initialization complete: %d x %d\n",
+               lattice_size_x, lattice_size_y);
+
     return lattice;
 }
 
+// Calculate total energy of the 2D Ising model with periodic boundary conditions
+// Energy formula: E = -J * sum(S_i * S_j) - h * sum(S_i)
 float energy_2D_openmp(int **lattice, int size_x, int size_y, float J, float h)
 {
     float energy = 0.0;
 
 #pragma omp parallel for reduction(+ : energy) collapse(2)
-
     for (int i = 0; i < size_x; i++)
     {
         for (int j = 0; j < size_y; j++)
         {
-
             int spin = lattice[i][j];
-            // each spin interacts with the right one and the bottom one (boundary conditions % size for edges sites)
+            // Each spin interacts with the right one and the bottom one (periodic BC)
             int right_neighbor = lattice[i][(j + 1) % size_y];
             int bottom_neighbor = lattice[(i + 1) % size_x][j];
 
-            if (DEBUG)
+            if (DEBUG && i < 2 && j < 2)
             {
-                printf("Right neighbor spin of (%i,%i): %i\n", i, j, right_neighbor);
-                printf("Bottom neighbor spin of (%i,%i): %i\n", i, j, bottom_neighbor);
+                printf("[CHECKPOINT] Energy calc at (%d,%d): spin=%d, right=%d, bottom=%d\n",
+                       i, j, spin, right_neighbor, bottom_neighbor);
             }
 
             energy -= J * spin * (right_neighbor + bottom_neighbor);
             energy -= h * spin;
         }
     }
+
+    if (DEBUG)
+        printf("[CHECKPOINT] Total energy calculated: %f\n", energy);
+
     return energy;
 }
 
+// Calculate total magnetization (sum of all spins)
 int magnetisation_2D_openmp(int **lattice, int size_x, int size_y)
 {
-
     int magnetisation = 0;
 
 #pragma omp parallel for reduction(+ : magnetisation) collapse(2)
-
     for (int i = 0; i < size_x; i++)
     {
         for (int j = 0; j < size_y; j++)
@@ -100,37 +113,24 @@ int magnetisation_2D_openmp(int **lattice, int size_x, int size_y)
         }
     }
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Total magnetization calculated: %d\n", magnetisation);
+
     return magnetisation;
 }
 
-// float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y,float J, float h){
-//     int spin = lattice[i][j];
-//     float sum_nn = 0.0f;
-
-//     if (i > 0)           sum_nn += lattice[i-1][j];
-//     if (i < size_x - 1)  sum_nn += lattice[i+1][j];
-//     if (j > 0)           sum_nn += lattice[i][j-1];
-//     if (j < size_y - 1)  sum_nn += lattice[i][j+1];
-
-//     return 2.0f * spin * (J * sum_nn + h);
-// }
-
-// float energy_density_2D(float energy, int size_x, int size_y){
-
-//     int N = size_x*size_y;
-
-//     float e_density = energy / N;
-
-//     return e_density;
-// }
-
+// Perform one Metropolis-Hastings sweep using checkerboard decomposition
+// This ensures no race conditions in parallel updates
 void MH_sweep_checkerboard_openmp(int **lattice,
                                   int size_x, int size_y,
                                   float J, float h,
                                   float kB, float T)
 {
+    // Process two colors sequentially (checkerboard pattern)
     for (int color = 0; color < 2; color++)
     {
+        if (DEBUG)
+            printf("[CHECKPOINT] Starting color %d sweep\n", color);
 
 #pragma omp parallel
         {
@@ -141,15 +141,17 @@ void MH_sweep_checkerboard_openmp(int **lattice,
             {
                 for (int j = 0; j < size_y; j++)
                 {
-
+                    // Skip sites not matching current color
                     if ((i + j) % 2 != color)
                         continue;
 
+                    // Calculate energy change if spin is flipped
                     float dE = d_energy_2D(lattice, i, j,
                                            size_x, size_y, J, h);
 
                     int accept = 0;
 
+                    // Metropolis acceptance criterion
                     if (dE <= 0.0f)
                     {
                         accept = 1;
@@ -161,9 +163,13 @@ void MH_sweep_checkerboard_openmp(int **lattice,
                             accept = 1;
                     }
 
+                    // Update spin if move is accepted
                     if (accept)
                     {
                         lattice[i][j] *= -1;
+                        if (DEBUG && i < 2 && j < 2)
+                            printf("[CHECKPOINT] Spin flipped at (%d,%d), dE=%f\n",
+                                   i, j, dE);
                     }
                 }
             }
@@ -171,121 +177,17 @@ void MH_sweep_checkerboard_openmp(int **lattice,
     }
 }
 
-// void save_lattice(const char *folder, int **lattice, int size_x, int size_y, float J, float h, float T, int mc_steps){
-
-//     char filename[512];
-
-//     snprintf(filename, sizeof(filename),
-//              "%s/ising_J%.3f_h%.3f_T%.3f_Lx%d_Ly%d_MC%d.dat",
-//              folder, J, h, T, size_x, size_y, mc_steps);
-
-//     FILE *fp = fopen(filename, "w");
-//     if (fp == NULL) {
-//         perror("Error opening file for lattice save");
-//         return;
-//     }
-
-//     for (int i = 0; i < size_x; i++) {
-//         for (int j = 0; j < size_y; j++) {
-//             fprintf(fp, "%d ", lattice[i][j]);
-//         }
-//         fprintf(fp, "\n");
-//     }
-
-//     fclose(fp);
-
-//     printf("Lattice saved to %s\n", filename);
-// }
-
-// void report_state(const char *label, int **lattice, int size_x, int size_y, float J, float h){
-
-//     float E = energy_2D(lattice, size_x, size_y, J, h);
-//     float e_density = energy_density_2D(E, size_x, size_y);
-//     int m = magnetisation_2D(lattice, size_x, size_y);
-
-//     int N = size_x * size_y;
-
-//     printf("----------------------------------------\n");
-//     printf("%s\n", label);
-//     printf("----------------------------------------\n");
-//     printf("Total energy        : %f\n", E);
-//     printf("Energy density      : %f\n", e_density);
-//     printf("Magnetisation       : %f\n", m);
-//     printf("Magnetisation/spin  : %f\n",(float) m /(float) N);
-
-//     if (size_x <= 4 && size_y <= 4) {
-//         print_lattice(lattice, size_x, size_y);
-//     }
-// }
-
-// int test(){
-
-//     // Parse command line arguments
-//     int lattice_size_x = 10;
-//     int lattice_size_y = 10;
-
-//     int type = 3; // 1 for all spin up, 2 for all spin down, 3 for random initialization of the lattice
-
-//     float J = 1.0; // Interaction strength
-//     float h = 1.0 ; // External magnetic field
-//     float kB = 1.0*exp(-23);
-//     float T = 100.0;
-//     int n_steps = 1000000;
-
-//     // simulation header
-//     printf("========================================\n");
-//     printf("2D Ising Model — Metropolis Simulation\n");
-//     printf("========================================\n");
-//     printf("Lattice size        : %d x %d\n", lattice_size_x, lattice_size_y);
-//     printf("Interaction J       : %.3f\n", J);
-//     printf("External field h    : %.3f\n", h);
-//     printf("Temperature T       : %.3f\n", T);
-//     printf("MC steps            : %d\n", n_steps);
-//     printf("Initialization type : %s\n",
-//         type == 1 ? "All up" :
-//         type == 2 ? "All down" : "Random");
-//     printf("\n");
-
-//     int **lattice = initialize_lattice_openmp(lattice_size_x, lattice_size_y, type);
-
-//     report_state("Initial state",lattice, lattice_size_x, lattice_size_y,J, h);
-//     save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, 0);
-
-//     for (int step = 0; step < n_steps; step++) {
-//     MH_sweep_checkerboard_openmp(lattice,
-//                           lattice_size_x, lattice_size_y,
-//                           J, h, kB, T);
-//     }
-
-//     report_state("Final state", lattice, lattice_size_x, lattice_size_y, J, h);
-//     save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, n_steps);
-
-//     // free the memory
-//     for (int i = 0; i < lattice_size_x; i++) {
-//         free(lattice[i]);
-//     }
-//     free(lattice);
-
-//     return 0;
-
-// }
-
-// typedef struct {
-//     float E;
-//     float e_density;
-//     float m;
-//     float m_density;
-//     float initialization_time;
-//     float MH_evolution_time;
-//     float MH_evolution_time_over_steps;
-// } Observables;
-
+// Main simulation function: initialize and run Ising simulation
 Observables run_ising_simulation_openmp(int lattice_size_x, int lattice_size_y,
                                         int type,
                                         float J, float h, float kB, float T,
                                         int n_steps)
 {
     clock_t t0, t1;
+
+    if (DEBUG)
+        printf("[CHECKPOINT] Starting simulation with lattice %d x %d\n",
+               lattice_size_x, lattice_size_y);
 
     /* --- Initialization timing --- */
     t0 = clock();
@@ -299,18 +201,26 @@ Observables run_ising_simulation_openmp(int lattice_size_x, int lattice_size_y,
     int n_sweeps = (int)n_steps / lattice_size_x / lattice_size_y;
     n_sweeps = fmax(1, n_sweeps);
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Beginning %d MH sweeps\n", n_sweeps);
+
     t0 = clock();
     for (int step = 0; step < n_sweeps; step++)
     {
         MH_sweep_checkerboard_openmp(lattice,
                                      lattice_size_x, lattice_size_y,
                                      J, h, kB, T);
+        if (DEBUG && step % 100 == 0)
+            printf("[CHECKPOINT] Completed sweep %d/%d\n", step, n_sweeps);
     }
 
     t1 = clock();
 
     float MH_evolution_time =
         (float)(t1 - t0) / CLOCKS_PER_SEC;
+
+    if (DEBUG)
+        printf("[CHECKPOINT] MH evolution complete in %f seconds\n", MH_evolution_time);
 
     /* --- Measurements --- */
     float E = energy_2D_openmp(lattice, lattice_size_x, lattice_size_y, J, h);
@@ -325,6 +235,9 @@ Observables run_ising_simulation_openmp(int lattice_size_x, int lattice_size_y,
     }
     free(lattice);
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Simulation cleanup complete\n");
+
     /* --- Output struct --- */
     Observables out;
     out.E = E;
@@ -338,10 +251,10 @@ Observables run_ising_simulation_openmp(int lattice_size_x, int lattice_size_y,
 
     return out;
 }
+
 #ifdef STANDALONE_BUILD
 int main(int argc, char *argv[])
 {
-
     // Check command line arguments
     if (argc != 3)
     {
@@ -376,7 +289,7 @@ int main(int argc, char *argv[])
     printf("\n");
     printf("========================================\n");
 
-    Observables out = run_ising_simulation(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
+    Observables out = run_ising_simulation_openmp(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_sweeps);
 
     printf("Energy                : %f\n", out.E);
     printf("Energy density        : %f\n", out.e_density);

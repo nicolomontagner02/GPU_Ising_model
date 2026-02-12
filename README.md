@@ -508,15 +508,9 @@ The `Post_processing.ipynb` notebook provides:
 
 ---
 
-## License
-
-This project is released under the MIT License.
-
----
-
 ## Author
 
-**Nicola Montagner**
+**Nicolò Montagner**
 - Institution: Modern Computing Course
 - Project: MCP 2025
 

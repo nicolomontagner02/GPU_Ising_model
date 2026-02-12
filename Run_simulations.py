@@ -41,12 +41,14 @@ run_cpu       = bind(lib.run_ising_simulation)
 run_openmp    = bind(lib.run_ising_simulation_openmp)
 run_gpu       = bind(lib.run_ising_simulation_gpu)
 run_gpu_eff   = bind(lib.run_ising_simulation_efficient_gpu)
+run_gpu_1Dthreads = bind(lib.run_ising_simulation_eff_memory_gpu)
 
 BACKENDS = {
-    "cpu_1": run_cpu,
-    "cpu_openmp": run_openmp,
-    "gpu": run_gpu,
-    "gpu_efficient": run_gpu_eff,
+    # "cpu_1": run_cpu,
+    # "cpu_openmp": run_openmp,
+    # "gpu": run_gpu,
+    # "gpu_efficient": run_gpu_eff,
+    "gpu_eff_1Dthreads": run_gpu_1Dthreads,
 }
 
 # ------------------------------------------------------------
@@ -60,7 +62,7 @@ J_values      = [1.0]
 h_values      = [0.5, 1.0, 2.0]
 T_values      = [0.5, 2.0, 10.0]
 init_types    = {
-    # 1: "all_up",
+    1: "all_up",
 #    2: "all_down",
     3: "random",
 }

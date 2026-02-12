@@ -16,14 +16,15 @@
 #define DEBUG 1
 
 // GPU kernel to initialize lattice (cold start: all spins +1 or -1)
+// GPU kernel to initialize lattice (cold start: all spins +1 or -1)
 __global__ void initialize_lattice_gpu_cold_eff_memory(int8_t *lattice, int size_x, int size_y, int sign)
 {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = size_x * size_y;
 
-    if (row < size_y && col < size_x)
+    if (idx < N)
     {
-        lattice[row * size_x + col] = sign;
+        lattice[idx] = sign;
     }
 }
 
@@ -38,14 +39,12 @@ __device__ __forceinline__ float rng_uniform_stateless_m(
 
 __global__ void initialize_lattice_gpu_hot_eff_memory(int8_t *lattice, unsigned long long seed, int size_x, int size_y)
 {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = size_x * size_y;
 
-    if (row < size_y && col < size_x)
+    if (idx < N)
     {
-        int idx = row * size_x + col;
-
-        unsigned long counter = (unsigned long long)(size_x * size_y) + idx;
+        unsigned long long counter = (unsigned long long)N + idx;
 
         float r = rng_uniform_stateless_m(seed, counter);
         lattice[idx] = (r < 0.5f) ? -1 : 1;
@@ -193,15 +192,14 @@ __global__ void magnetization_2D_kernel_gpu_eff_memory(
     int local_sum = 0;
 
     // Grid-stride loop with coalesced memory access
-    // Process multiple elements per thread to improve cache efficiency
     for (int i = global_tid; i < N; i += stride)
         local_sum += lattice[i];
 
-    // Store in shared memory with bank conflict avoidance
+    // Store in shared memory
     sdata[tid] = local_sum;
     __syncthreads();
 
-    // Warp-unrolled block reduction for better memory efficiency
+    // Block reduction
     for (int s = blockDim.x / 2; s > 32; s >>= 1)
     {
         if (tid < s)
@@ -209,21 +207,22 @@ __global__ void magnetization_2D_kernel_gpu_eff_memory(
         __syncthreads();
     }
 
-    // Final warp reduction without synchronization (single warp)
+    // Final warp reduction - use volatile to prevent compiler reordering
     if (tid < 32)
     {
-        if (blockDim.x > 32)
-            sdata[tid] += sdata[tid + 32];
-        if (blockDim.x > 16)
-            sdata[tid] += sdata[tid + 16];
-        if (blockDim.x > 8)
-            sdata[tid] += sdata[tid + 8];
-        if (blockDim.x > 4)
-            sdata[tid] += sdata[tid + 4];
-        if (blockDim.x > 2)
-            sdata[tid] += sdata[tid + 2];
-        if (blockDim.x > 1)
-            sdata[tid] += sdata[tid + 1];
+        volatile int *smem = sdata; // CRITICAL: volatile prevents optimization issues
+        if (blockDim.x >= 64)
+            smem[tid] += smem[tid + 32];
+        if (blockDim.x >= 32)
+            smem[tid] += smem[tid + 16];
+        if (blockDim.x >= 16)
+            smem[tid] += smem[tid + 8];
+        if (blockDim.x >= 8)
+            smem[tid] += smem[tid + 4];
+        if (blockDim.x >= 4)
+            smem[tid] += smem[tid + 2];
+        if (blockDim.x >= 2)
+            smem[tid] += smem[tid + 1];
     }
 
     // One atomic per block
@@ -300,9 +299,9 @@ bool check_hot_lattice_randomness_m(
     cudaMalloc(&d_S, sizeof(int));
     cudaMalloc(&d_C, sizeof(int));
 
-    cudaMemset(&d_M, 0, sizeof(int));
-    cudaMemset(&d_S, 0, sizeof(int));
-    cudaMemset(&d_C, 0, sizeof(int));
+    cudaMemset(d_M, 0, sizeof(int));
+    cudaMemset(d_S, 0, sizeof(int));
+    cudaMemset(d_C, 0, sizeof(int));
 
     int threads = THREADS_PER_BLOCK;
     int blocks = (N + threads - 1) / threads;
@@ -322,7 +321,6 @@ bool check_hot_lattice_randomness_m(
 
     double sqrtN = sqrt((double)N);
 
-    // Thresholds
     double max_M = 2.0 * sqrtN;
     double max_S = 2.0 * sqrtN;
     double max_C = 0.05 * N;

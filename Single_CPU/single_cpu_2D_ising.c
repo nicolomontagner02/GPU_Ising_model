@@ -1,3 +1,19 @@
+/*
+ * 2D Ising Model Metropolis Simulation
+ *
+ * This code implements a Monte Carlo simulation of the 2D Ising model using the
+ * Metropolis Hastings algorithm. The Ising model is a mathematical model of ferromagnetism
+ * in statistical mechanics, where spins on a 2D lattice interact with their nearest
+ * neighbors and an external magnetic field.
+ *
+ * Key features:
+ * - Lattice initialization (all up, all down, or random)
+ * - Energy and magnetization calculations
+ * - Metropolis-Hastings spin flip dynamics
+ * - Performance timing and observable measurements
+ * - Optional DEBUG mode for detailed step-by-step tracking
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -5,9 +21,9 @@
 
 #define DEBUG 0
 
+/* Print the current state of the 2D lattice */
 void print_lattice(int **lattice, int size_x, int size_y)
 {
-
     printf("2D Ising Lattice:\n");
     for (int i = 0; i < size_x; i++)
     {
@@ -19,8 +35,17 @@ void print_lattice(int **lattice, int size_x, int size_y)
     }
 }
 
+/*
+ * Initialize the lattice with spins based on the initialization type
+ * type=1: all spins up (+1)
+ * type=2: all spins down (-1)
+ * type=3: random spins (+1 or -1)
+ */
 int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type)
 {
+    if (DEBUG)
+        printf("[CHECKPOINT] Initializing lattice (%d x %d) with type %d\n",
+               lattice_size_x, lattice_size_y, type);
 
     // Allocate memory for the lattice
     int **lattice = (int **)malloc(lattice_size_x * sizeof(int *));
@@ -41,6 +66,8 @@ int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type)
                 lattice[i][j] = 1;
             }
         }
+        if (DEBUG)
+            printf("[CHECKPOINT] All spins initialized to +1\n");
         break;
 
     case 2:
@@ -52,6 +79,8 @@ int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type)
                 lattice[i][j] = -1;
             }
         }
+        if (DEBUG)
+            printf("[CHECKPOINT] All spins initialized to -1\n");
         break;
 
     case 3:
@@ -64,6 +93,8 @@ int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type)
                 lattice[i][j] = (rand() % 2) * 2 - 1; // Randomly assign +1 or -1
             }
         }
+        if (DEBUG)
+            printf("[CHECKPOINT] Random spins initialized\n");
         break;
 
     default:
@@ -80,16 +111,22 @@ int **initialize_lattice(int lattice_size_x, int lattice_size_y, int type)
     return lattice;
 }
 
+/*
+ * Calculate the total energy of the 2D lattice
+ * Uses periodic boundary conditions
+ */
 float energy_2D(int **lattice, int size_x, int size_y, float J, float h)
 {
+    if (DEBUG)
+        printf("[CHECKPOINT] Computing total energy\n");
+
     float energy = 0.0;
     for (int i = 0; i < size_x; i++)
     {
         for (int j = 0; j < size_y; j++)
         {
-
             int spin = lattice[i][j];
-            // each spin interacts with the right one and the bottom one (boundary conditions % size for edges sites)
+            // Each spin interacts with the right and bottom neighbors (periodic boundary conditions)
             int right_neighbor = lattice[i][(j + 1) % size_y];
             int bottom_neighbor = lattice[(i + 1) % size_x][j];
 
@@ -103,11 +140,16 @@ float energy_2D(int **lattice, int size_x, int size_y, float J, float h)
             energy -= h * spin;
         }
     }
+    if (DEBUG)
+        printf("[CHECKPOINT] Total energy computed: %f\n", energy);
     return energy;
 }
 
+/* Calculate the total magnetization of the lattice */
 int magnetisation_2D(int **lattice, int size_x, int size_y)
 {
+    if (DEBUG)
+        printf("[CHECKPOINT] Computing magnetization\n");
 
     int magnetisation = 0;
 
@@ -119,19 +161,27 @@ int magnetisation_2D(int **lattice, int size_x, int size_y)
         }
     }
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Magnetization computed: %d\n", magnetisation);
     return magnetisation;
 }
 
+/*
+ * Calculate the energy change if spin at position (i,j) is flipped
+ * Used in Metropolis algorithm to determine acceptance probability
+ */
 float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y, float J, float h)
 {
     int spin = lattice[i][j];
     float sum_nn = 0.0f;
 
+    // Calculate indices with periodic boundary conditions
     int ip = (i + 1) % size_x;
     int im = (i - 1 + size_x) % size_x;
     int jp = (j + 1) % size_y;
     int jm = (j - 1 + size_y) % size_y;
 
+    // Sum all four nearest neighbors
     sum_nn += lattice[im][j];
     sum_nn += lattice[ip][j];
     sum_nn += lattice[i][jm];
@@ -140,31 +190,36 @@ float d_energy_2D(int **lattice, int i, int j, int size_x, int size_y, float J, 
     return 2.0f * spin * (J * sum_nn + h);
 }
 
+/* Calculate the energy density (energy per spin) */
 float energy_density_2D(float energy, int size_x, int size_y)
 {
-
     int N = size_x * size_y;
-
     float e_density = energy / N;
-
     return e_density;
 }
 
+/*
+ * Perform one Metropolis-Hastings step: propose a spin flip and accept/reject
+ * based on the energy change and temperature
+ */
 void MH_step(int **lattice, int size_x, int size_y, float J, float h, float kB, float T)
 {
+    // Randomly select a spin to flip
     int i_s = rand() % size_x;
     int j_s = rand() % size_y;
 
     if (DEBUG)
     {
-        printf("Proposed flip at (%d, %d)\n", i_s, j_s);
+        printf("[CHECKPOINT] Proposed flip at (%d, %d)\n", i_s, j_s);
     }
 
+    // Calculate energy change for the proposed flip
     float d_energy = d_energy_2D(lattice, i_s, j_s,
                                  size_x, size_y, J, h);
 
     int accept = 0;
 
+    // Accept if energy decreases, or with probability exp(-dE/kT) if it increases
     if (d_energy <= 0.0f)
     {
         accept = 1;
@@ -179,22 +234,26 @@ void MH_step(int **lattice, int size_x, int size_y, float J, float h, float kB, 
         }
     }
 
+    // Apply the flip if accepted
     if (accept)
     {
         lattice[i_s][j_s] *= -1;
         if (DEBUG)
         {
-            printf("Move accepted (ΔE = %.4f)\n", d_energy);
+            printf("[CHECKPOINT] Move accepted (ΔE = %.4f)\n", d_energy);
         }
     }
     else if (DEBUG)
     {
-        printf("Move rejected (ΔE = %.4f)\n", d_energy);
+        printf("[CHECKPOINT] Move rejected (ΔE = %.4f)\n", d_energy);
     }
 }
 
+/* Print current observables (energy, magnetization) */
 void report_state(const char *label, int **lattice, int size_x, int size_y, float J, float h)
 {
+    if (DEBUG)
+        printf("[CHECKPOINT] Reporting state: %s\n", label);
 
     float E = energy_2D(lattice, size_x, size_y, J, h);
     float e_density = energy_density_2D(E, size_x, size_y);
@@ -216,8 +275,11 @@ void report_state(const char *label, int **lattice, int size_x, int size_y, floa
     }
 }
 
+/* Save the final lattice configuration to a file */
 void save_lattice(const char *folder, int **lattice, int size_x, int size_y, float J, float h, float T, int mc_steps)
 {
+    if (DEBUG)
+        printf("[CHECKPOINT] Saving lattice to file\n");
 
     char filename[512];
 
@@ -232,6 +294,7 @@ void save_lattice(const char *folder, int **lattice, int size_x, int size_y, flo
         return;
     }
 
+    // Write lattice to file
     for (int i = 0; i < size_x; i++)
     {
         for (int j = 0; j < size_y; j++)
@@ -244,24 +307,28 @@ void save_lattice(const char *folder, int **lattice, int size_x, int size_y, flo
     fclose(fp);
 
     printf("Lattice saved to %s\n", filename);
+    if (DEBUG)
+        printf("[CHECKPOINT] Lattice save complete\n");
 }
 
 int test()
 {
+    if (DEBUG)
+        printf("[CHECKPOINT] Starting test() function\n");
 
     // Parse command line arguments
     int lattice_size_x = 10;
     int lattice_size_y = 10;
 
-    int type = 3; // 1 for all spin up, 2 for all spin down, 3 for random initialization of the lattice
+    int type = 3; // 1 for all spin up, 2 for all spin down, 3 for random initialization
 
     float J = 1.0; // Interaction strength
     float h = 1.0; // External magnetic field
     float kB = 1.0 * exp(-23);
-    float T = 100.0;
-    int n_steps = 1000000;
+    float T = 100.0;       // Temperature
+    int n_steps = 1000000; // Number of Monte Carlo steps
 
-    // simulation header
+    // Simulation header
     printf("========================================\n");
     printf("2D Ising Model — Metropolis Simulation\n");
     printf("========================================\n");
@@ -275,77 +342,114 @@ int test()
                                             : "Random");
     printf("\n");
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Parameters set, initializing lattice\n");
+
     int **lattice = initialize_lattice(lattice_size_x, lattice_size_y, type);
 
     report_state("Initial state", lattice, lattice_size_x, lattice_size_y, J, h);
     save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, 0);
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Starting %d MC steps\n", n_steps);
+
     for (int i = 0; i < n_steps; i++)
     {
         MH_step(lattice, lattice_size_x, lattice_size_y, J, h, kB, T);
-        if (DEBUG)
+        if (DEBUG && i % 100000 == 0)
         {
-            printf("MH step %i executed.\n", i);
+            printf("[CHECKPOINT] MH step %i / %i executed\n", i, n_steps);
         }
     }
+
+    if (DEBUG)
+        printf("[CHECKPOINT] MC evolution complete\n");
 
     report_state("Final state", lattice, lattice_size_x, lattice_size_y, J, h);
     save_lattice("data", lattice, lattice_size_x, lattice_size_y, J, h, T, n_steps);
 
-    // free the memory
+    // Free the memory
+    if (DEBUG)
+        printf("[CHECKPOINT] Freeing lattice memory\n");
     for (int i = 0; i < lattice_size_x; i++)
     {
         free(lattice[i]);
     }
     free(lattice);
 
+    if (DEBUG)
+        printf("[CHECKPOINT] test() function complete\n");
     return 0;
 }
 
+/* Structure to hold simulation observables and timing results */
 typedef struct
 {
-    float E;
-    float e_density;
-    float m;
-    float m_density;
-    float initialization_time;
-    float MH_evolution_time;
-    float MH_evolution_time_over_steps;
+    float E;                            // Total energy
+    float e_density;                    // Energy density (per spin)
+    float m;                            // Total magnetization
+    float m_density;                    // Magnetization density (per spin)
+    float initialization_time;          // Time for initialization (seconds)
+    float MH_evolution_time;            // Total time for MC evolution (seconds)
+    float MH_evolution_time_over_steps; // Time per MC step (seconds)
 } Observables;
 
+/*
+ * Run a complete Ising model simulation with timing
+ * Returns structure containing final observables and performance metrics
+ */
 Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
                                  int type,
                                  float J, float h, float kB, float T,
                                  int n_steps)
 {
+    if (DEBUG)
+        printf("[CHECKPOINT] Starting run_ising_simulation()\n");
+
     clock_t t0, t1;
 
     /* --- Initialization timing --- */
+    if (DEBUG)
+        printf("[CHECKPOINT] Starting initialization phase\n");
     t0 = clock();
     int **lattice = initialize_lattice(lattice_size_x, lattice_size_y, type);
     t1 = clock();
 
     float initialization_time =
         (float)(t1 - t0) / CLOCKS_PER_SEC;
+    if (DEBUG)
+        printf("[CHECKPOINT] Initialization complete (%.6f s)\n", initialization_time);
 
     /* --- Metropolis evolution timing --- */
+    if (DEBUG)
+        printf("[CHECKPOINT] Starting Metropolis evolution phase (%d steps)\n", n_steps);
     t0 = clock();
     for (int i = 0; i < n_steps; i++)
     {
         MH_step(lattice, lattice_size_x, lattice_size_y, J, h, kB, T);
+        if (DEBUG && i % 100000 == 0)
+        {
+            printf("[CHECKPOINT] Evolution: %d / %d steps completed\n", i, n_steps);
+        }
     }
     t1 = clock();
 
     float MH_evolution_time =
         (float)(t1 - t0) / CLOCKS_PER_SEC;
+    if (DEBUG)
+        printf("[CHECKPOINT] Metropolis evolution complete (%.6f s)\n", MH_evolution_time);
 
     /* --- Measurements --- */
+    if (DEBUG)
+        printf("[CHECKPOINT] Computing final observables\n");
     float E = energy_2D(lattice, lattice_size_x, lattice_size_y, J, h);
     float e_density = energy_density_2D(E, lattice_size_x, lattice_size_y);
     float m = magnetisation_2D(lattice, lattice_size_x, lattice_size_y);
     float m_density = m / lattice_size_x / lattice_size_y;
 
     /* --- Cleanup --- */
+    if (DEBUG)
+        printf("[CHECKPOINT] Freeing lattice memory\n");
     for (int i = 0; i < lattice_size_x; i++)
     {
         free(lattice[i]);
@@ -363,11 +467,16 @@ Observables run_ising_simulation(int lattice_size_x, int lattice_size_y,
     out.MH_evolution_time_over_steps =
         MH_evolution_time / (float)n_steps;
 
+    if (DEBUG)
+        printf("[CHECKPOINT] run_ising_simulation() complete\n");
     return out;
 }
+
 #ifdef STANDALONE_BUILD
 int main(int argc, char *argv[])
 {
+    if (DEBUG)
+        printf("[CHECKPOINT] main() started\n");
 
     // Check command line arguments
     if (argc != 3)
@@ -388,6 +497,10 @@ int main(int argc, char *argv[])
     float T = 100;
     int n_steps = 1000000;
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Parameters parsed: Lattice %d x %d, type %d\n",
+               lattice_size_x, lattice_size_y, type);
+
     printf("========================================\n");
     printf("2D Ising Model — Metropolis Simulation\n");
     printf("========================================\n");
@@ -402,6 +515,8 @@ int main(int argc, char *argv[])
     printf("\n");
     printf("========================================\n");
 
+    if (DEBUG)
+        printf("[CHECKPOINT] Calling run_ising_simulation()\n");
     Observables out = run_ising_simulation(lattice_size_x, lattice_size_y, type, J, h, kB, T, n_steps);
 
     printf("Energy                : %f\n", out.E);
@@ -412,6 +527,8 @@ int main(int argc, char *argv[])
     printf("MH evolution time (s)          : %f\n", out.MH_evolution_time);
     printf("MH time per step (s)           : %e\n", out.MH_evolution_time_over_steps);
 
+    if (DEBUG)
+        printf("[CHECKPOINT] main() complete\n");
     return 0;
 }
 #endif

@@ -441,7 +441,7 @@ extern "C" Observables run_ising_simulation_2D_block_gpu(
     // ============================================================
     clock_t t0 = clock();
 
-    if (type == 0)
+    if (type == 1)
     {
         // Cold start: all spins +1
         if (DEBUG)
@@ -449,7 +449,7 @@ extern "C" Observables run_ising_simulation_2D_block_gpu(
         initialize_lattice_gpu_cold_2Dblock<<<grid, block>>>(
             d_lattice, lattice_size_x, lattice_size_y, +1);
     }
-    else if (type == 1)
+    else if (type == 2)
     {
         // Cold start: all spins -1
         if (DEBUG)
@@ -612,7 +612,7 @@ extern "C" Observables run_ising_simulation_2D_block_gpu_save(
     // ============================================================
     clock_t t0 = clock();
 
-    if (type == 0)
+    if (type == 1)
     {
         // Cold start: all spins +1
         if (DEBUG)
@@ -620,7 +620,7 @@ extern "C" Observables run_ising_simulation_2D_block_gpu_save(
         initialize_lattice_gpu_cold_2Dblock<<<grid, block>>>(
             d_lattice, lattice_size_x, lattice_size_y, +1);
     }
-    else if (type == 1)
+    else if (type == 2)
     {
         // Cold start: all spins -1
         if (DEBUG)

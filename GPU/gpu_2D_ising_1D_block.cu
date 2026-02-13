@@ -497,7 +497,7 @@ extern "C" Observables run_ising_simulation_1D_block_gpu(
     // ============================================================
     clock_t t0 = clock();
 
-    if (type == 0)
+    if (type == 1)
     {
         // Cold start: all spins +1
         initialize_lattice_gpu_cold_1D_block<<<blocks, threads>>>(
@@ -505,7 +505,7 @@ extern "C" Observables run_ising_simulation_1D_block_gpu(
         if (DEBUG)
             printf("[CHECKPOINT] Cold initialization with spin +1\n");
     }
-    else if (type == 1)
+    else if (type == 2)
     {
         // Cold start: all spins -1
         initialize_lattice_gpu_cold_1D_block<<<blocks, threads>>>(
@@ -653,14 +653,14 @@ extern "C" Observables run_ising_simulation_1D_block_gpu_save(
     // ============================================================
     clock_t t0 = clock();
 
-    if (type == 0)
+    if (type == 1)
     {
         initialize_lattice_gpu_cold_1D_block<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, +1);
         if (DEBUG)
             printf("[CHECKPOINT] Cold initialization with spin +1\n");
     }
-    else if (type == 1)
+    else if (type == 2)
     {
         initialize_lattice_gpu_cold_1D_block<<<blocks, threads>>>(
             d_lattice, lattice_size_x, lattice_size_y, -1);

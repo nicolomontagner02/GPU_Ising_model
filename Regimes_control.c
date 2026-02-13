@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
         h_span[i] = h_s + i * dh;
     }
 
-    for (int ty = 3; ty < 4; ty += 2)
+    for (int ty = 1; ty < 4; ty += 3)
     {
         int type = ty; // 1 for all spin up, 2 for all spin down, 3 for random initialization of the lattice
 
@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 
                     if (count % 7 == 0)
                     {
-                        save = 1;
+                        save = 0;
                         count = 0;
                     }
 

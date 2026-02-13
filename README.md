@@ -70,7 +70,7 @@ GPU_Ising_model/
 
 ```bash
 # Compile everything with optimization level 3
-./compile_all.sh 1 3
+./compile_all.sh 1 0
 ```
 
 This creates three executables:
@@ -81,7 +81,7 @@ This creates three executables:
 ### Shared Library (for Python)
 
 ```bash
-./compile_share_library.sh 3
+./compile_share_library.sh 1 0
 ```
 
 ## Basic Usage

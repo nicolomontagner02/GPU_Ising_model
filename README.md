@@ -69,7 +69,7 @@ GPU_Ising_model/
 ### Quick Start
 
 ```bash
-# Compile everything with optimization level 3
+# Compile everything with optimization level 0
 ./compile_all.sh 1 0
 ```
 
